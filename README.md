@@ -6,7 +6,7 @@ Quiz multiplayer de filmes, séries e cultura pop, com salas personalizadas, lob
 
 - **Frontend:** React + Vite + Socket.IO Client
 - **Backend:** Node.js + Express + Socket.IO
-- **Banco inicial:** `server/data/questions.json`, com 200 perguntas categorizadas
+- **Banco inicial:** `server/data/questions.js`, com 200 perguntas categorizadas
 - **Modo atual:** MVP jogável em tempo real com armazenamento em memória
 
 ## Funcionalidades entregues
@@ -27,7 +27,7 @@ Quiz multiplayer de filmes, séries e cultura pop, com salas personalizadas, lob
 ### 1. Instalar dependências
 
 ```bash
-npm install
+npm run install:all
 ```
 
 ### 2. Rodar cliente e servidor juntos
@@ -51,11 +51,12 @@ http://localhost:3333
 ## Scripts úteis
 
 ```bash
-npm run dev       # roda client e server simultaneamente
-npm run dev:web   # roda apenas o frontend
-npm run dev:api   # roda apenas o backend
-npm run build     # gera build do frontend
-npm run start     # inicia o backend em modo produção
+npm run install:all # instala dependências da raiz, client e server
+npm run dev         # roda client e server simultaneamente
+npm run dev:web     # roda apenas o frontend
+npm run dev:api     # roda apenas o backend
+npm run build       # gera build do frontend
+npm run start       # inicia o backend em modo produção
 ```
 
 ## Estrutura
@@ -71,7 +72,7 @@ MovizzQuizz/
 │   └── package.json
 ├── server/
 │   ├── data/
-│   │   └── questions.json
+│   │   └── questions.js
 │   ├── src/
 │   │   ├── gameEngine.js
 │   │   └── index.js
