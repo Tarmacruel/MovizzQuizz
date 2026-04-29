@@ -1,0 +1,30 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="70" y1="48" x2="442" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="0.52" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="120" y1="96" x2="392" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.62"/>
+    </linearGradient>
+    <filter id="shadow" x="24" y="24" width="464" height="464" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#020617" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <rect x="48" y="48" width="416" height="416" rx="112" fill="url(#bg)" filter="url(#shadow)"/>
+  <path d="M104 160C104 133.49 125.49 112 152 112H360C386.51 112 408 133.49 408 160V176H104V160Z" fill="#0F172A" fill-opacity="0.86"/>
+  <path d="M132 112H184L152 176H100L132 112Z" fill="#F8FAFC" fill-opacity="0.92"/>
+  <path d="M220 112H272L240 176H188L220 112Z" fill="#F8FAFC" fill-opacity="0.92"/>
+  <path d="M308 112H360L328 176H276L308 112Z" fill="#F8FAFC" fill-opacity="0.92"/>
+  <path d="M104 176H408V352C408 378.51 386.51 400 360 400H152C125.49 400 104 378.51 104 352V176Z" fill="#0F172A" fill-opacity="0.72"/>
+
+  <circle cx="256" cy="288" r="100" fill="#020617" fill-opacity="0.24"/>
+  <path d="M177 337V241H203L230 289L257 241H283V337H257V287L237 322H223L203 287V337H177Z" fill="url(#shine)"/>
+  <path d="M295 337V241H333C363.38 241 385 261.52 385 288C385 304.68 376.42 319.02 362.95 327.04L386 361H356L337 333H321V337H295ZM321 310H332C347.65 310 358 301.25 358 288C358 274.75 347.65 266 332 266H321V310Z" fill="url(#shine)"/>
+
+  <circle cx="374" cy="374" r="38" fill="#FACC15"/>
+  <path d="M374 394C370.69 394 368 391.31 368 388C368 384.69 370.69 382 374 382C377.31 382 380 384.69 380 388C380 391.31 377.31 394 374 394ZM374 374C370.69 374 368 371.31 368 368V356C368 352.69 370.69 350 374 350C377.31 350 380 352.69 380 356V368C380 371.31 377.31 374 374 374Z" fill="#0F172A"/>
+</svg>
