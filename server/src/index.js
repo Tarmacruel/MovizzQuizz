@@ -3,7 +3,7 @@ import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import { customAlphabet } from "nanoid";
-import questions from "../data/questions.json" assert { type: "json" };
+import questions from "../data/questions.js";
 import {
   createRoom,
   getPublicRoom,
