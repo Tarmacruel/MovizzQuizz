@@ -103,6 +103,20 @@ Healthcheck: http://localhost:8001/health
 
 Se o `DATABASE_URL` não estiver configurado, o banco estiver indisponível ou não houver perguntas ativas, o servidor continua jogável usando o fallback local.
 
+## Automação Windows
+
+Na raiz do projeto existem arquivos `.bat` para operação local:
+
+```txt
+iniciar.bat   sobe frontend e backend em modo dev
+parar.bat     encerra processos nas portas 5180/8001 e processos do projeto
+resetar.bat   reseta o banco movizzquizz, aplica migrations e roda seed
+atualizar.bat faz git pull, instala dependências, aplica migrations/seed e build
+```
+
+Use `resetar.bat` com cuidado: ele apaga os dados atuais do banco local antes de recriar tudo.
+Para automação sem prompt, use `resetar.bat /y /nopause`, `atualizar.bat /y /nopause` ou `parar.bat /nopause`.
+
 ## Salas
 
 - O host escolhe se a sala é pública ou privada.
