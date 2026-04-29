@@ -1,47 +1,101 @@
+import { DEFAULT_APP_SETTINGS } from "./appSettings.js";
+
 const DEFAULT_SETTINGS = {
-  categories: ["Marvel", "Star Wars", "DC", "O Senhor dos Anéis", "Cultura Pop"],
+  categories: ["Marvel", "Star Wars", "DC", "O Senhor dos Anéis", "Cultura Pop", "League of Legends"],
   difficulties: ["Fácil", "Médio", "Difícil"],
   totalQuestions: 20,
   secondsPerQuestion: 30,
+  maxPlayers: 8,
+  isPublic: true,
+  roundLimit: 0,
 };
 
 function shuffle(items) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
-function sanitizeSettings(settings = {}, questionBank = []) {
+function clamp(number, min, max) {
+  return Math.max(min, Math.min(Number(number), max));
+}
+
+function getRoundLimit(settings = {}, appSettings = DEFAULT_APP_SETTINGS) {
+  const value = Number(settings.roundLimit ?? DEFAULT_SETTINGS.roundLimit);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return clamp(value, 1, appSettings.maxRounds);
+}
+
+function sanitizeSettings(settings = {}, questionBank = [], appSettings = DEFAULT_APP_SETTINGS) {
   const categories = [...new Set(questionBank.map((q) => q.category))];
   const difficulties = [...new Set(questionBank.map((q) => q.difficulty))];
 
   const selectedCategories = Array.isArray(settings.categories) && settings.categories.length
     ? settings.categories.filter((item) => categories.includes(item))
-    : DEFAULT_SETTINGS.categories;
+    : DEFAULT_SETTINGS.categories.filter((item) => categories.includes(item));
 
   const selectedDifficulties = Array.isArray(settings.difficulties) && settings.difficulties.length
     ? settings.difficulties.filter((item) => difficulties.includes(item))
-    : DEFAULT_SETTINGS.difficulties;
+    : DEFAULT_SETTINGS.difficulties.filter((item) => difficulties.includes(item));
 
-  const totalQuestions = Math.max(5, Math.min(Number(settings.totalQuestions || DEFAULT_SETTINGS.totalQuestions), 50));
-  const secondsPerQuestion = Math.max(10, Math.min(Number(settings.secondsPerQuestion || DEFAULT_SETTINGS.secondsPerQuestion), 60));
+  const totalQuestions = clamp(
+    settings.totalQuestions || appSettings.defaultTotalQuestions,
+    appSettings.minTotalQuestions,
+    appSettings.maxTotalQuestions
+  );
+  const secondsPerQuestion = clamp(
+    settings.secondsPerQuestion || appSettings.defaultSecondsPerQuestion,
+    appSettings.minSecondsPerQuestion,
+    appSettings.maxSecondsPerQuestion
+  );
+  const maxPlayers = clamp(settings.maxPlayers || appSettings.defaultMaxPlayers, 1, appSettings.maxPlayers);
+  const isPublic = settings.isPublic !== false;
+  const roundLimit = getRoundLimit(settings, appSettings);
 
   return {
     categories: selectedCategories.length ? selectedCategories : categories,
     difficulties: selectedDifficulties.length ? selectedDifficulties : difficulties,
     totalQuestions,
     secondsPerQuestion,
+    maxPlayers,
+    isPublic,
+    roundLimit,
   };
 }
 
-function buildDeck(settings, questionBank) {
+function prepareQuestion(question) {
+  return {
+    ...question,
+    options: shuffle(question.options),
+  };
+}
+
+function buildDeck(settings, questionBank, usedQuestionIds = new Set()) {
   const filtered = questionBank.filter(
     (q) => settings.categories.includes(q.category) && settings.difficulties.includes(q.difficulty)
   );
+  const uniqueQuestions = [...new Map(filtered.map((q) => [q.question.trim().toLowerCase(), q])).values()];
 
-  if (filtered.length < 1) {
+  if (uniqueQuestions.length < 1) {
     throw new Error("Nenhuma pergunta encontrada para os filtros selecionados.");
   }
 
-  return shuffle(filtered).slice(0, Math.min(settings.totalQuestions, filtered.length));
+  let available = uniqueQuestions.filter((question) => !usedQuestionIds.has(question.id));
+  const shouldResetUsed = available.length < 1;
+
+  if (shouldResetUsed) {
+    usedQuestionIds.clear();
+    available = uniqueQuestions;
+  }
+
+  const deck = shuffle(available).slice(0, Math.min(settings.totalQuestions, available.length));
+
+  if (deck.length < settings.totalQuestions && available.length < uniqueQuestions.length) {
+    const selectedIds = new Set(deck.map((question) => question.id));
+    const refill = shuffle(uniqueQuestions.filter((question) => !selectedIds.has(question.id)))
+      .slice(0, settings.totalQuestions - deck.length);
+    deck.push(...refill);
+  }
+
+  return deck.map(prepareQuestion);
 }
 
 function publicQuestion(question) {
@@ -50,17 +104,31 @@ function publicQuestion(question) {
   return safeQuestion;
 }
 
-export function createRoom({ code, hostSocketId, playerName, socketId, settings, questionBank }) {
+function getRoundResult(room) {
+  const ranking = [...room.players].sort((a, b) => b.score - a.score);
+  return {
+    roundNumber: room.roundNumber,
+    winner: ranking[0] || null,
+    ranking,
+    finishedAt: Date.now(),
+  };
+}
+
+export function createRoom({ code, hostSocketId, playerName, socketId, settings, questionBank, appSettings }) {
   return {
     code,
     hostSocketId,
     status: "lobby",
-    settings: sanitizeSettings(settings, questionBank),
+    settings: sanitizeSettings(settings, questionBank, appSettings),
     players: [{ id: socketId, name: playerName, score: 0, connected: true }],
     questions: [],
     currentIndex: 0,
     currentAnswers: {},
     history: [],
+    roundNumber: 0,
+    roundResults: [],
+    lastRoundResult: null,
+    usedQuestionIds: new Set(),
     roundStartedAt: null,
     roundEndsAt: null,
     revealAt: null,
@@ -69,34 +137,57 @@ export function createRoom({ code, hostSocketId, playerName, socketId, settings,
 }
 
 export function joinRoom(room, { socketId, playerName }) {
+  if (room.players.length >= room.settings.maxPlayers) {
+    throw new Error("Esta sala já atingiu o limite de participantes.");
+  }
+
   if (room.players.some((player) => player.name.toLowerCase() === playerName.toLowerCase())) {
     playerName = `${playerName} ${room.players.length + 1}`;
   }
 
-  room.players.push({
+  const player = {
     id: socketId,
     name: playerName,
     score: 0,
     connected: true,
-  });
+  };
+
+  room.players.push(player);
+  return player;
 }
 
-export function updateSettings(room, settings, questionBank) {
-  if (room.status !== "lobby") {
-    throw new Error("As configurações só podem ser alteradas no lobby.");
+export function updateSettings(room, settings, questionBank, appSettings) {
+  if (room.status !== "lobby" && room.status !== "round_finished") {
+    throw new Error("As configurações só podem ser alteradas no lobby ou entre rodadas.");
   }
 
-  room.settings = sanitizeSettings({ ...room.settings, ...settings }, questionBank);
+  room.settings = sanitizeSettings({ ...room.settings, ...settings }, questionBank, appSettings);
+  room.settings.maxPlayers = Math.max(room.players.length, room.settings.maxPlayers);
 }
 
 export function startGame(room, questionBank) {
+  if (!["lobby", "round_finished", "finished"].includes(room.status)) {
+    throw new Error("A partida já está em andamento.");
+  }
   if (room.players.length < 1) throw new Error("A partida precisa ter ao menos um jogador.");
-  room.questions = buildDeck(room.settings, questionBank);
+
+  if (room.status === "finished") {
+    room.roundNumber = 0;
+    room.roundResults = [];
+    room.usedQuestionIds.clear();
+  }
+
+  room.questions = buildDeck(room.settings, questionBank, room.usedQuestionIds);
+  for (const question of room.questions) {
+    room.usedQuestionIds.add(question.id);
+  }
   room.players = room.players.map((player) => ({ ...player, score: 0 }));
   room.status = "playing";
+  room.roundNumber += 1;
   room.currentIndex = 0;
   room.currentAnswers = {};
   room.history = [];
+  room.lastRoundResult = null;
   room.roundStartedAt = Date.now();
   room.roundEndsAt = room.roundStartedAt + room.settings.secondsPerQuestion * 1000;
   room.revealAt = null;
@@ -119,6 +210,7 @@ export function submitAnswer(room, { socketId, questionId, option, timedOut = fa
   room.currentAnswers[socketId] = {
     playerId: socketId,
     playerName: player.name,
+    questionId: question.id,
     option: option || null,
     correct,
     points,
@@ -126,19 +218,25 @@ export function submitAnswer(room, { socketId, questionId, option, timedOut = fa
     timedOut,
     answeredAt: Date.now(),
   };
+
+  return room.currentAnswers[socketId];
 }
 
 export function advanceRound(room) {
   if (!["reveal", "playing"].includes(room.status)) return;
 
   if (room.currentIndex + 1 >= room.questions.length) {
-    room.status = "finished";
     room.roundEndsAt = null;
     room.revealAt = null;
     room.history.push({
       question: room.questions[room.currentIndex],
       answers: room.currentAnswers,
     });
+    room.lastRoundResult = getRoundResult(room);
+    room.roundResults.push(room.lastRoundResult);
+    room.status = room.settings.roundLimit > 0 && room.roundNumber >= room.settings.roundLimit
+      ? "finished"
+      : "round_finished";
     return;
   }
 
@@ -163,7 +261,7 @@ export function removePlayerBySocket(room, socketId) {
 
 export function getPublicRoom(room) {
   const currentQuestion = room.questions[room.currentIndex];
-  const correctAnswer = ["reveal", "finished"].includes(room.status) ? currentQuestion?.answer : null;
+  const correctAnswer = ["reveal", "round_finished", "finished"].includes(room.status) ? currentQuestion?.answer : null;
 
   return {
     code: room.code,
@@ -176,6 +274,10 @@ export function getPublicRoom(room) {
     currentQuestion: publicQuestion(currentQuestion),
     correctAnswer,
     currentAnswers: room.currentAnswers,
+    roundNumber: room.roundNumber,
+    roundResults: room.roundResults,
+    lastRoundResult: room.lastRoundResult,
+    canStartNextRound: room.status === "round_finished",
     roundStartedAt: room.roundStartedAt,
     roundEndsAt: room.roundEndsAt,
     revealAt: room.revealAt,

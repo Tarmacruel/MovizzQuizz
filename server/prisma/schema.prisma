@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Question {
+  id         String   @id
+  category   String
+  difficulty String
+  question   String
+  options    Json
+  answer     String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([active])
+  @@index([category, difficulty])
+}
+
+model Room {
+  id           String        @id @default(cuid())
+  code         String        @unique
+  status       String        @default("lobby")
+  hostSocketId String?
+  settings     Json
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  players      Player[]
+  sessions     GameSession[]
+}
+
+model Player {
+  id        String       @id @default(cuid())
+  roomId    String
+  socketId  String
+  name      String
+  score     Int          @default(0)
+  connected Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  room      Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  answers   GameAnswer[]
+
+  @@unique([roomId, socketId])
+  @@index([roomId])
+}
+
+model GameSession {
+  id           String       @id @default(cuid())
+  roomId       String
+  status       String       @default("playing")
+  currentIndex Int          @default(0)
+  deck         Json
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  room         Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  answers      GameAnswer[]
+
+  @@index([roomId])
+  @@index([status])
+}
+
+model GameAnswer {
+  id             String      @id @default(cuid())
+  sessionId      String
+  playerId       String
+  questionId     String?
+  selectedOption String?
+  correct        Boolean     @default(false)
+  points         Int         @default(0)
+  secondsLeft    Int?
+  answeredAt     DateTime    @default(now())
+  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  player         Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([playerId])
+  @@index([questionId])
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
