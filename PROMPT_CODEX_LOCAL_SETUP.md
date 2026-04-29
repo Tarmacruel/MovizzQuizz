@@ -29,22 +29,29 @@ O repositório já possui um MVP funcional com:
 Existem outros sistemas rodando na mesma máquina:
 
 ```txt
-SIREL: localhost:5173
-Frota: localhost:3000
+SIREL frontend: localhost:5173
+Frota frontend: localhost:3000
+Frota backend/API: localhost:8000
 PostgreSQL compartilhado: localhost:5432
 ```
 
-Portanto, o MovizzQuizz NÃO deve usar as portas 5173 ou 3000.
+Portanto, o MovizzQuizz NÃO deve usar as portas 5173, 3000 ou 8000.
 
 Portas desejadas para o MovizzQuizz:
 
 ```txt
 Frontend Vite: localhost:5180
-Backend API/Socket.IO: localhost:3334
+Backend API/Socket.IO: localhost:8001
 PostgreSQL: localhost:5432
 Database: movizzquizz
 Subdomínio futuro: quizz.sirel.com.br
 ```
+
+## Decisão técnica sobre a porta do backend
+
+O backend do Frota já usa `localhost:8000`. O MovizzQuizz deve usar outra porta, preferencialmente `localhost:8001`.
+
+Não colocar o backend do Quizz na mesma porta `8000`, salvo se no futuro houver um reverse proxy ou um único gateway HTTP roteando por path/subdomínio. Como o Quizz tem processo próprio Node.js + Socket.IO, a solução correta e mais simples é backend separado em `8001`.
 
 ## Objetivo da tarefa
 
@@ -67,24 +74,24 @@ server: {
 }
 ```
 
-Alterar a porta padrão do backend para `3334`.
+Alterar a porta padrão do backend para `8001`.
 
 No backend, usar:
 
 ```js
-const PORT = process.env.PORT || 3334;
+const PORT = process.env.PORT || 8001;
 ```
 
 A URL padrão do frontend para o backend deve apontar para:
 
 ```txt
-http://localhost:3334
+http://localhost:8001
 ```
 
 No `client/src/App.jsx`, ajustar fallback de `VITE_API_URL` para:
 
 ```js
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3334";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
 ```
 
 ### 2. Criar arquivos `.env.example`
@@ -98,19 +105,19 @@ Sugestão:
 ```env
 APP_NAME=MovizzQuizz
 APP_URL=http://localhost:5180
-API_URL=http://localhost:3334
+API_URL=http://localhost:8001
 ```
 
 #### `client/.env.example`
 
 ```env
-VITE_API_URL=http://localhost:3334
+VITE_API_URL=http://localhost:8001
 ```
 
 #### `server/.env.example`
 
 ```env
-PORT=3334
+PORT=8001
 CLIENT_ORIGIN=http://localhost:5180
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/movizzquizz
 ```
@@ -330,7 +337,7 @@ quizz.sirel.com.br -> http://localhost:5180
 E backend em:
 
 ```txt
-http://localhost:3334
+http://localhost:8001
 ```
 
 Nesse caso, ajustar CORS para aceitar:
@@ -345,7 +352,7 @@ https://quizz.sirel.com.br
 Gerar build do frontend e servir `client/dist` pelo Express. Nesse cenário:
 
 ```txt
-quizz.sirel.com.br -> http://localhost:3334
+quizz.sirel.com.br -> http://localhost:8001
 ```
 
 Essa opção é preferível para publicação simples, pois evita expor duas portas no tunnel.
@@ -361,7 +368,7 @@ Implementar preferencialmente a Opção B:
 
 Atualizar o `README.md` com:
 
-- portas corretas: frontend `5180`, backend `3334`;
+- portas corretas: frontend `5180`, backend `8001`;
 - criação do banco `movizzquizz`;
 - configuração de `.env`;
 - comandos Prisma;
@@ -388,7 +395,7 @@ CREATE DATABASE movizzquizz;
 Criar `server/.env` com:
 
 ```env
-PORT=3334
+PORT=8001
 CLIENT_ORIGIN=http://localhost:5180
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/movizzquizz
 ```
@@ -421,14 +428,15 @@ URLs esperadas:
 
 ```txt
 Frontend: http://localhost:5180
-Backend: http://localhost:3334
-Healthcheck: http://localhost:3334/health
+Backend: http://localhost:8001
+Healthcheck: http://localhost:8001/health
 ```
 
 ## Cuidados importantes
 
 - Não usar `localhost:5173`, pois já está ocupado pelo SIREL.
-- Não usar `localhost:3000`, pois já está ocupado pelo Frota.
+- Não usar `localhost:3000`, pois já está ocupado pelo frontend do Frota.
+- Não usar `localhost:8000`, pois já está ocupado pela API/backend do Frota.
 - Não alterar o PostgreSQL existente dos outros sistemas.
 - Criar banco separado chamado `movizzquizz`.
 - Não commitar `.env` real.
@@ -440,7 +448,7 @@ Healthcheck: http://localhost:3334/health
 
 Ao final, o MovizzQuizz deve:
 
-1. Rodar localmente em `localhost:5180` com backend em `localhost:3334`.
+1. Rodar localmente em `localhost:5180` com backend em `localhost:8001`.
 2. Usar PostgreSQL local `localhost:5432`, banco `movizzquizz`.
 3. Carregar perguntas do banco após seed.
 4. Registrar histórico mínimo de partidas/respostas.
