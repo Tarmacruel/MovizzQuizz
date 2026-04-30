@@ -1,6 +1,7 @@
 import { DEFAULT_APP_SETTINGS } from "./appSettings.js";
 
 const DEFAULT_SETTINGS = {
+  gameType: "quiz",
   categories: ["Marvel", "Star Wars", "DC", "O Senhor dos Anéis", "Cultura Pop", "League of Legends"],
   difficulties: ["Fácil", "Médio", "Difícil"],
   totalQuestions: 20,
@@ -51,6 +52,7 @@ function sanitizeSettings(settings = {}, questionBank = [], appSettings = DEFAUL
   const roundLimit = getRoundLimit(settings, appSettings);
 
   return {
+    gameType: "quiz",
     categories: selectedCategories.length ? selectedCategories : categories,
     difficulties: selectedDifficulties.length ? selectedDifficulties : difficulties,
     totalQuestions,
@@ -114,13 +116,15 @@ function getRoundResult(room) {
   };
 }
 
-export function createRoom({ code, hostSocketId, playerName, socketId, settings, questionBank, appSettings }) {
+export function createRoom({ code, hostSocketId, playerName, playerId, socketId, settings, questionBank, appSettings }) {
+  const id = playerId || socketId;
   return {
     code,
-    hostSocketId,
+    gameType: "quiz",
+    hostSocketId: hostSocketId || id,
     status: "lobby",
     settings: sanitizeSettings(settings, questionBank, appSettings),
-    players: [{ id: socketId, name: playerName, score: 0, connected: true }],
+    players: [{ id, socketId, name: playerName, score: 0, connected: true }],
     questions: [],
     currentIndex: 0,
     currentAnswers: {},
@@ -132,11 +136,22 @@ export function createRoom({ code, hostSocketId, playerName, socketId, settings,
     roundStartedAt: null,
     roundEndsAt: null,
     revealAt: null,
+    emptySince: null,
     createdAt: Date.now(),
   };
 }
 
-export function joinRoom(room, { socketId, playerName }) {
+export function joinRoom(room, { socketId, playerName, playerId }) {
+  const reconnectingPlayer = playerId ? room.players.find((player) => player.id === playerId) : null;
+
+  if (reconnectingPlayer) {
+    reconnectingPlayer.socketId = socketId;
+    reconnectingPlayer.connected = true;
+    reconnectingPlayer.name = playerName || reconnectingPlayer.name;
+    room.emptySince = null;
+    return reconnectingPlayer;
+  }
+
   if (room.players.length >= room.settings.maxPlayers) {
     throw new Error("Esta sala já atingiu o limite de participantes.");
   }
@@ -146,13 +161,15 @@ export function joinRoom(room, { socketId, playerName }) {
   }
 
   const player = {
-    id: socketId,
+    id: playerId || socketId,
+    socketId,
     name: playerName,
     score: 0,
     connected: true,
   };
 
   room.players.push(player);
+  room.emptySince = null;
   return player;
 }
 
@@ -197,18 +214,18 @@ export function submitAnswer(room, { socketId, questionId, option, timedOut = fa
   if (!["playing", "reveal"].includes(room.status)) throw new Error("A partida não está aceitando respostas.");
   if (room.status === "reveal") return;
   const question = room.questions[room.currentIndex];
-  const player = room.players.find((p) => p.id === socketId);
+  const player = room.players.find((p) => p.socketId === socketId || p.id === socketId);
   if (!question || !player) return;
   if (question.id !== questionId) throw new Error("Pergunta inválida para a rodada atual.");
-  if (room.currentAnswers[socketId]) return;
+  if (room.currentAnswers[player.id]) return;
 
   const correct = option === question.answer;
   const secondsLeft = Math.max(0, Math.ceil((room.roundEndsAt - Date.now()) / 1000));
   const points = correct ? 100 + secondsLeft * 3 : 0;
 
   player.score += points;
-  room.currentAnswers[socketId] = {
-    playerId: socketId,
+  room.currentAnswers[player.id] = {
+    playerId: player.id,
     playerName: player.name,
     questionId: question.id,
     option: option || null,
@@ -219,7 +236,7 @@ export function submitAnswer(room, { socketId, questionId, option, timedOut = fa
     answeredAt: Date.now(),
   };
 
-  return room.currentAnswers[socketId];
+  return room.currentAnswers[player.id];
 }
 
 export function advanceRound(room) {
@@ -255,8 +272,20 @@ export function advanceRound(room) {
 
 export function removePlayerBySocket(room, socketId) {
   const before = room.players.length;
-  room.players = room.players.filter((player) => player.id !== socketId);
+  room.players = room.players.filter((player) => player.socketId !== socketId && player.id !== socketId);
   return before !== room.players.length;
+}
+
+export function disconnectPlayerBySocket(room, socketId) {
+  const player = room.players.find((item) => item.socketId === socketId || item.id === socketId);
+  if (!player) return null;
+  player.connected = false;
+  player.socketId = null;
+  return player;
+}
+
+export function getPlayerBySocket(room, socketId) {
+  return room.players.find((player) => player.socketId === socketId || player.id === socketId) || null;
 }
 
 export function getPublicRoom(room) {
@@ -265,6 +294,7 @@ export function getPublicRoom(room) {
 
   return {
     code: room.code,
+    gameType: "quiz",
     hostSocketId: room.hostSocketId,
     status: room.status,
     settings: room.settings,

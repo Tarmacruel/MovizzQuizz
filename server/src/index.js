@@ -13,6 +13,8 @@ import { DEFAULT_APP_SETTINGS, sanitizeAppSettings } from "./appSettings.js";
 import { hashPassword, makeToken, verifyPassword } from "./security.js";
 import {
   createRoom,
+  disconnectPlayerBySocket,
+  getPlayerBySocket,
   getPublicRoom,
   joinRoom,
   removePlayerBySocket,
@@ -21,6 +23,21 @@ import {
   advanceRound,
   updateSettings,
 } from "./gameEngine.js";
+import {
+  addStopReviewChatMessage,
+  advanceStopReviewCategory,
+  callStop,
+  createStopRoom,
+  finishStopReview,
+  finishStopRound,
+  getPublicStopRoom,
+  markStopReviewReady,
+  nextStopRound,
+  startStopGame,
+  submitStopAnswers,
+  updateStopSettings,
+  validateStopAnswer,
+} from "./stopEngine.js";
 import {
   persistAnswerSubmitted,
   persistGameProgress,
@@ -48,6 +65,7 @@ const CLIENT_ORIGINS = [
   ]),
 ];
 const makeCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 5);
+const EMPTY_ROOM_GRACE_MS = 5 * 60 * 1000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistPath = path.resolve(__dirname, "../../client/dist");
 
@@ -85,17 +103,26 @@ function requireAdmin(req, res, next) {
 }
 
 function getRoomSummary(room, { revealCode = true } = {}) {
+  const isStop = room.gameType === "stop";
+  const categories = isStop
+    ? (room.settings.categories || []).map((category) => category.name || category)
+    : room.settings.categories;
+
   return {
     code: revealCode ? room.code : null,
+    gameType: room.gameType || "quiz",
+    matchName: room.settings.matchName,
     status: room.status,
     isPublic: room.settings.isPublic,
-    playerCount: room.players.length,
+    playerCount: room.players.filter((player) => player.connected).length,
     maxPlayers: room.settings.maxPlayers,
     totalQuestions: room.settings.totalQuestions,
     secondsPerQuestion: room.settings.secondsPerQuestion,
+    totalRounds: isStop ? room.settings.totalRounds : room.settings.roundLimit,
+    roundSeconds: isStop ? room.settings.roundSeconds : room.settings.secondsPerQuestion,
     roundLimit: room.settings.roundLimit,
     roundNumber: room.roundNumber,
-    categories: room.settings.categories,
+    categories,
     difficulties: room.settings.difficulties,
     createdAt: room.createdAt,
   };
@@ -179,29 +206,50 @@ function validateQuestionPayload(payload = {}) {
   return { category, difficulty, question, options, answer, active };
 }
 
-function leaveRoom(socket, code) {
+function sanitizePlayerId(value) {
+  const id = String(value || "").trim();
+  if (/^[a-zA-Z0-9_-]{8,80}$/.test(id)) return id;
+  return randomUUID();
+}
+
+function isRoomHost(room, socketId) {
+  const player = getPlayerBySocket(room, socketId);
+  return Boolean(player && room.hostSocketId === player.id);
+}
+
+function leaveRoom(socket, code, { disconnect = false } = {}) {
   const room = rooms.get(code);
   if (!room) return;
+
+  const player = disconnect ? disconnectPlayerBySocket(room, socket.id) : getPlayerBySocket(room, socket.id);
+  if (!player) return;
+
+  socket.leave(code);
+
+  if (disconnect) {
+    room.emptySince = room.players.every((item) => !item.connected) ? Date.now() : null;
+    void persistPlayerDisconnected(room, player.id);
+    emitRoom(code);
+    return;
+  }
 
   const removed = removePlayerBySocket(room, socket.id);
   if (!removed) return;
 
-  socket.leave(code);
-
   if (room.players.length === 0) {
     void (async () => {
-      await persistPlayerDisconnected(room, socket.id);
+      await persistPlayerDisconnected(room, player.id);
       await persistRoomEmptied(room);
     })();
     rooms.delete(code);
     return;
   }
 
-  if (room.hostSocketId === socket.id) {
-    room.hostSocketId = room.players[0].id;
+  if (room.hostSocketId === player.id) {
+    room.hostSocketId = (room.players.find((item) => item.connected) || room.players[0])?.id;
   }
 
-  void persistPlayerDisconnected(room, socket.id);
+  void persistPlayerDisconnected(room, player.id);
   emitRoom(code);
 }
 
@@ -226,7 +274,7 @@ app.get("/app-settings", (_, res) => {
 
 app.get("/rooms", (_, res) => {
   const lobbyRooms = [...rooms.values()]
-    .filter((room) => room.status === "lobby")
+    .filter((room) => room.status === "lobby" && !room.emptySince)
     .sort((a, b) => b.createdAt - a.createdAt);
 
   res.json({
@@ -385,7 +433,8 @@ const io = new Server(server, {
 function emitRoom(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
-  io.to(roomCode).emit("room:update", getPublicRoom(room));
+  const payload = room.gameType === "stop" ? getPublicStopRoom(room) : getPublicRoom(room);
+  io.to(roomCode).emit("room:update", payload);
 }
 
 function emitError(socket, message) {
@@ -393,17 +442,28 @@ function emitError(socket, message) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ playerName, settings } = {}) => {
+  socket.on("room:create", ({ playerName, playerId, settings } = {}) => {
     const cleanName = String(playerName || "").trim().slice(0, 24);
     if (!cleanName) return emitError(socket, "Informe o nome do jogador.");
+    const stablePlayerId = sanitizePlayerId(playerId);
 
     let code = makeCode();
     while (rooms.has(code)) code = makeCode();
 
-    const room = createRoom({
+    const gameType = settings?.gameType === "stop" ? "stop" : "quiz";
+    const room = gameType === "stop" ? createStopRoom({
       code,
-      hostSocketId: socket.id,
+      hostSocketId: stablePlayerId,
       playerName: cleanName,
+      playerId: stablePlayerId,
+      socketId: socket.id,
+      settings,
+      appSettings,
+    }) : createRoom({
+      code,
+      hostSocketId: stablePlayerId,
+      playerName: cleanName,
+      playerId: stablePlayerId,
       socketId: socket.id,
       settings,
       questionBank,
@@ -413,24 +473,26 @@ io.on("connection", (socket) => {
     rooms.set(code, room);
     socket.join(code);
     void persistRoomCreated(room);
-    socket.emit("room:joined", { roomCode: code, playerId: socket.id });
+    socket.emit("room:joined", { roomCode: code, playerId: stablePlayerId });
     emitRoom(code);
   });
 
-  socket.on("room:join", ({ roomCode, playerName } = {}) => {
+  socket.on("room:join", ({ roomCode, playerName, playerId } = {}) => {
     const code = String(roomCode || "").trim().toUpperCase();
     const cleanName = String(playerName || "").trim().slice(0, 24);
+    const stablePlayerId = playerId ? sanitizePlayerId(playerId) : null;
     const room = rooms.get(code);
+    const reconnectingPlayer = stablePlayerId ? room?.players.find((player) => player.id === stablePlayerId) : null;
 
     if (!room) return emitError(socket, "Sala nao encontrada.");
     if (!cleanName) return emitError(socket, "Informe o nome do jogador.");
-    if (!["lobby", "round_finished"].includes(room.status)) return emitError(socket, "Esta partida já começou.");
+    if (!reconnectingPlayer && !["lobby", "round_finished"].includes(room.status)) return emitError(socket, "Esta partida já começou.");
 
     try {
-      const player = joinRoom(room, { socketId: socket.id, playerName: cleanName });
+      const player = joinRoom(room, { socketId: socket.id, playerName: cleanName, playerId: stablePlayerId });
       socket.join(code);
       void persistPlayerJoined(room, player);
-      socket.emit("room:joined", { roomCode: code, playerId: socket.id });
+      socket.emit("room:joined", { roomCode: code, playerId: player.id, reconnected: Boolean(reconnectingPlayer) });
       emitRoom(code);
     } catch (error) {
       emitError(socket, error.message);
@@ -440,16 +502,25 @@ io.on("connection", (socket) => {
   socket.on("room:settings", ({ roomCode, settings } = {}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
-    if (room.hostSocketId !== socket.id) return emitError(socket, "Apenas o host pode alterar a partida.");
-    updateSettings(room, settings, questionBank, appSettings);
-    void persistSettingsUpdated(room);
-    emitRoom(room.code);
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode alterar a partida.");
+    try {
+      if (room.gameType === "stop") {
+        updateStopSettings(room, settings, appSettings);
+      } else {
+        updateSettings(room, settings, questionBank, appSettings);
+      }
+      void persistSettingsUpdated(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
   });
 
   socket.on("game:start", ({ roomCode } = {}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
-    if (room.hostSocketId !== socket.id) return emitError(socket, "Apenas o host pode iniciar a partida.");
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode iniciar a partida.");
+    if (room.gameType === "stop") return emitError(socket, "Use o inicio do modo Stop.");
     try {
       startGame(room, questionBank);
       void persistGameStarted(room);
@@ -462,12 +533,13 @@ io.on("connection", (socket) => {
   socket.on("answer:submit", ({ roomCode, questionId, option } = {}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
+    if (room.gameType === "stop") return emitError(socket, "Use o envio de respostas do modo Stop.");
     try {
       const answer = submitAnswer(room, { socketId: socket.id, questionId, option });
       void persistAnswerSubmitted(room, answer);
       emitRoom(room.code);
 
-      const allAnswered = room.players.every((p) => room.currentAnswers[p.id]);
+      const allAnswered = room.players.filter((player) => player.connected).every((p) => room.currentAnswers[p.id]);
       if (allAnswered && room.status === "playing") {
         room.status = "reveal";
         room.revealAt = Date.now();
@@ -482,10 +554,130 @@ io.on("connection", (socket) => {
   socket.on("game:next", ({ roomCode } = {}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
-    if (room.hostSocketId !== socket.id) return emitError(socket, "Apenas o host pode avancar a rodada.");
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode avancar a rodada.");
+    if (room.gameType === "stop") return emitError(socket, "Use o avancar do modo Stop.");
     advanceRound(room);
     void persistGameProgress(room);
     emitRoom(room.code);
+  });
+
+  socket.on("stop:settings", ({ roomCode, settings } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode alterar a partida.");
+    try {
+      updateStopSettings(room, settings, appSettings);
+      void persistSettingsUpdated(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:start", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode iniciar a partida.");
+    try {
+      startStopGame(room);
+      void persistGameStarted(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:submitAnswers", ({ roomCode, answers } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    try {
+      submitStopAnswers(room, { socketId: socket.id, answers });
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:callStop", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    try {
+      callStop(room, { socketId: socket.id });
+      void persistGameProgress(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:roundTimeout", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    if (room.status !== "stop-playing") return;
+    if (Date.now() < (room.currentRound?.roundEndsAt || 0)) return;
+    finishStopRound(room, { reason: "timeout" });
+    void persistGameProgress(room);
+    emitRoom(room.code);
+  });
+
+  socket.on("stop:validateAnswer", ({ roomCode, responseId, playerId, categoryId, valid } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    try {
+      validateStopAnswer(room, { voterSocketId: socket.id, responseId, playerId, categoryId, valid });
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:reviewReady", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    try {
+      markStopReviewReady(room, { socketId: socket.id });
+      void persistGameProgress(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:reviewChat", ({ roomCode, message } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    try {
+      addStopReviewChatMessage(room, { socketId: socket.id, message });
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:finishReview", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode confirmar a revisao.");
+    try {
+      finishStopReview(room);
+      void persistGameProgress(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("stop:nextRound", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "stop") return;
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode avancar a rodada.");
+    try {
+      nextStopRound(room);
+      void persistGameProgress(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
   });
 
   socket.on("room:leave", ({ roomCode } = {}) => {
@@ -496,13 +688,33 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     for (const [code, room] of rooms) {
-      leaveRoom(socket, code);
+      leaveRoom(socket, code, { disconnect: true });
     }
   });
 });
 
 setInterval(() => {
   for (const room of rooms.values()) {
+    if (room.emptySince && Date.now() - room.emptySince > EMPTY_ROOM_GRACE_MS) {
+      void persistRoomEmptied(room);
+      rooms.delete(room.code);
+      continue;
+    }
+
+    if (room.gameType === "stop") {
+      if (room.status === "stop-playing" && Date.now() >= (room.currentRound?.roundEndsAt || 0)) {
+        finishStopRound(room, { reason: "timeout" });
+        void persistGameProgress(room);
+        emitRoom(room.code);
+      }
+      if (room.status === "stop-review" && !room.currentRound?.reviewComplete && Date.now() >= (room.currentRound?.reviewCategoryEndsAt || 0)) {
+        advanceStopReviewCategory(room);
+        void persistGameProgress(room);
+        emitRoom(room.code);
+      }
+      continue;
+    }
+
     if (room.status !== "playing" || !room.roundEndsAt) continue;
     if (Date.now() >= room.roundEndsAt) {
       for (const player of room.players) {

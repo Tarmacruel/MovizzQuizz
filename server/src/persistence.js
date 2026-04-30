@@ -35,18 +35,32 @@ function serializeQuestion(question) {
   };
 }
 
+function serializeDeck(room) {
+  if (room.gameType === "stop") {
+    return {
+      currentRound: room.currentRound,
+      rounds: room.rounds || [],
+      usedLetters: room.usedLetters || [],
+    };
+  }
+
+  return (room.questions || []).map(serializeQuestion);
+}
+
 async function upsertRoom(room) {
   const dbRoom = await prisma.room.upsert({
     where: { code: room.code },
     update: {
       status: room.status,
       hostSocketId: room.hostSocketId,
+      gameType: room.gameType || "quiz",
       settings: room.settings,
     },
     create: {
       code: room.code,
       status: room.status,
       hostSocketId: room.hostSocketId,
+      gameType: room.gameType || "quiz",
       settings: room.settings,
     },
     select: { id: true },
@@ -106,10 +120,13 @@ async function createSession(room, roomId) {
   const session = await prisma.gameSession.create({
     data: {
       roomId,
+      gameType: room.gameType || "quiz",
       status: room.status,
-      currentIndex: room.currentIndex,
-      deck: room.questions.map(serializeQuestion),
-      startedAt: dateFromTimestamp(room.roundStartedAt),
+      currentIndex: room.currentIndex ?? room.roundNumber ?? 0,
+      deck: serializeDeck(room),
+      settings: room.settings,
+      history: room.gameType === "stop" ? room.rounds || [] : room.history || [],
+      startedAt: dateFromTimestamp(room.roundStartedAt || room.currentRound?.startedAt),
     },
     select: { id: true },
   });
@@ -132,7 +149,7 @@ async function resolveSessionId(room, roomId) {
     return session.id;
   }
 
-  if (!room.questions.length) return null;
+  if (room.gameType !== "stop" && !room.questions.length) return null;
   return createSession(room, roomId);
 }
 
@@ -216,8 +233,11 @@ export async function persistGameProgress(room) {
       where: { id: sessionId },
       data: {
         status: room.status,
-        currentIndex: room.currentIndex,
-        finishedAt: ["round_finished", "finished"].includes(room.status) ? new Date() : undefined,
+        currentIndex: room.currentIndex ?? room.roundNumber ?? 0,
+        deck: serializeDeck(room),
+        settings: room.settings,
+        history: room.gameType === "stop" ? room.rounds || [] : room.history || [],
+        finishedAt: ["round_finished", "finished", "stop-finished"].includes(room.status) ? new Date() : undefined,
       },
     });
 

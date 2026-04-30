@@ -1,6 +1,6 @@
 # MovizzQuizz
 
-Quiz multiplayer de filmes, séries e cultura pop, com salas personalizadas, lobby, perguntas de múltipla escolha, cronômetro por rodada e ranking final em tempo real.
+Plataforma multiplayer de jogos de sala. O MovizzQuizz preserva o quiz de filmes, séries e cultura pop e adiciona o modo **Stop / Adedanha**, com temas 100% personalizados pelo host, letras sorteadas, STOP, revisão de respostas e ranking final em tempo real.
 
 ## Stack
 
@@ -119,6 +119,10 @@ Para automação sem prompt, use `resetar.bat /y /nopause`, `atualizar.bat /y /n
 
 ## Salas
 
+- Na tela inicial o jogador escolhe entre **Quiz de Cultura Pop** e **Stop / Adedanha**.
+- A entrada por código funciona para qualquer modo de jogo.
+- Toda sala possui `gameType`: `quiz` ou `stop`.
+- O navegador guarda a identidade do jogador e tenta reconectar automaticamente na mesma sala após F5/reload.
 - O host escolhe se a sala é pública ou privada.
 - O host define o máximo de participantes, de 1 a 20.
 - O host define rodadas livres ou um número pré-definido de rodadas.
@@ -128,6 +132,75 @@ Para automação sem prompt, use `resetar.bat /y /nopause`, `atualizar.bat /y /n
 - Ao fim de cada rodada, o jogo mostra vencedor, pontuação e classificação.
 - O host pode iniciar a próxima rodada, e ao fim da partida pode jogar novamente.
 - Se o host sair, a sala passa para a próxima pessoa por ordem de entrada.
+
+## Modo Quiz
+
+O modo original continua disponível com:
+
+- lobby, filtros de categoria/dificuldade e limite de participantes;
+- perguntas de múltipla escolha com cronômetro;
+- respostas em tempo real via Socket.IO;
+- revelação da resposta correta;
+- pontuação por acerto e velocidade;
+- ranking por rodada e ranking final.
+
+## Modo Stop / Adedanha
+
+O host cria uma sala Stop e configura a partida no lobby:
+
+- nome da partida;
+- tempo por rodada;
+- quantidade de rodadas;
+- letras permitidas, com opção de remover K, W e Y;
+- temas/categorias livres, com adicionar, remover, renomear e reordenar;
+- pontos por resposta válida;
+- bônus por resposta única;
+- validação manual pelo host;
+- sala pública ou privada e limite de participantes.
+
+Fluxo da rodada:
+
+1. O host inicia a partida.
+2. O servidor sorteia uma letra sem repetir enquanto houver letras disponíveis.
+3. Cada jogador preenche uma resposta por tema.
+4. Ao preencher todos os temas, qualquer jogador pode clicar em **STOP**.
+5. O STOP encerra a rodada para todos e bloqueia novas respostas.
+6. O servidor calcula respostas vazias, respostas de uma única letra, repetidas e únicas.
+7. Respostas com apenas uma letra são desconsideradas automaticamente e não podem pontuar.
+8. A revisão passa por um tema de cada vez, com respostas anônimas exibidas como botões.
+9. Durante a revisão, os jogadores têm um chat em tempo real para comentar e discutir o tema sem revelar autoria das respostas.
+10. Cada tema tem 60 segundos de votação; quando o tempo acaba ou todos os jogadores conectados clicam em **Pronto**, o jogo avança para o próximo tema.
+11. As respostas entram válidas por padrão, exceto vazias ou com apenas uma letra; clicar no botão alterna entre válida e inválida.
+12. Uma resposta só é invalidada por votação quando metade ou mais dos participantes votam "não"; por exemplo, em uma sala com 4 pessoas, são necessários 2 votos "não".
+13. Pontuação e classificação só aparecem ao final da revisão da rodada.
+14. O host confirma a pontuação e avança para a próxima rodada.
+15. Ao final, o ranking final é exibido.
+
+Eventos Socket.IO adicionados para Stop:
+
+```txt
+stop:settings
+stop:start
+stop:submitAnswers
+stop:callStop
+stop:roundTimeout
+stop:validateAnswer
+stop:reviewReady
+stop:reviewChat
+stop:finishReview
+stop:nextRound
+```
+
+Estados principais do Stop:
+
+```txt
+lobby
+stop-playing
+stop-review
+stop-finished
+```
+
+Persistência: o Stop roda em memória na sessão atual e o Prisma já possui `gameType` em `Room`/`GameSession`, campos JSON para settings/history e tabelas preparadas para `StopRound`, `StopCategory` e `StopAnswer`.
 
 ## Admin
 
@@ -167,7 +240,7 @@ Scripts do backend:
 
 ```bash
 npm --prefix server run prisma:generate
-npm --prefix server run prisma:migrate -- --name init
+npm --prefix server run prisma:migrate -- --name stop_adedanha
 npm --prefix server run prisma:seed
 npm --prefix server run db:studio
 ```
@@ -224,7 +297,8 @@ MovizzQuizz/
 │   │   ├── db.js
 │   │   ├── gameEngine.js
 │   │   ├── index.js
-│   │   └── persistence.js
+│   │   ├── persistence.js
+│   │   └── stopEngine.js
 │   ├── .env.example
 │   └── package.json
 ├── .env.example

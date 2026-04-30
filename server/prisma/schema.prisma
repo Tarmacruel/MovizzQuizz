@@ -23,47 +23,59 @@ model Question {
 }
 
 model Room {
-  id           String        @id @default(cuid())
-  code         String        @unique
-  status       String        @default("lobby")
-  hostSocketId String?
-  settings     Json
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  players      Player[]
-  sessions     GameSession[]
+  id             String         @id @default(cuid())
+  code           String         @unique
+  gameType       String         @default("quiz")
+  status         String         @default("lobby")
+  hostSocketId   String?
+  settings       Json
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  players        Player[]
+  sessions       GameSession[]
+  stopRounds     StopRound[]
+  stopCategories StopCategory[]
+
+  @@index([gameType])
 }
 
 model Player {
-  id        String       @id @default(cuid())
-  roomId    String
-  socketId  String
-  name      String
-  score     Int          @default(0)
-  connected Boolean      @default(true)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  room      Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  answers   GameAnswer[]
+  id          String       @id @default(cuid())
+  roomId      String
+  socketId    String
+  name        String
+  score       Int          @default(0)
+  connected   Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  room        Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  answers     GameAnswer[]
+  stopAnswers StopAnswer[]
 
   @@unique([roomId, socketId])
   @@index([roomId])
 }
 
 model GameSession {
-  id           String       @id @default(cuid())
-  roomId       String
-  status       String       @default("playing")
-  currentIndex Int          @default(0)
-  deck         Json
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  room         Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  answers      GameAnswer[]
+  id             String         @id @default(cuid())
+  roomId         String
+  gameType       String         @default("quiz")
+  status         String         @default("playing")
+  currentIndex   Int            @default(0)
+  deck           Json
+  settings       Json?
+  history        Json?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  room           Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  answers        GameAnswer[]
+  stopRounds     StopRound[]
+  stopCategories StopCategory[]
 
   @@index([roomId])
+  @@index([gameType])
   @@index([status])
 }
 
@@ -99,4 +111,63 @@ model AppSetting {
   value     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model StopRound {
+  id                String       @id @default(cuid())
+  roomId            String
+  sessionId         String?
+  roundNumber       Int
+  letter            String
+  status            String       @default("stop-playing")
+  startedAt         DateTime?
+  endedAt           DateTime?
+  stoppedByPlayerId String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  room              Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  session           GameSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  answers           StopAnswer[]
+
+  @@index([roomId])
+  @@index([sessionId])
+  @@index([status])
+}
+
+model StopCategory {
+  id        String       @id @default(cuid())
+  roomId    String?
+  sessionId String?
+  name      String
+  order     Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  room      Room?        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  session   GameSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answers   StopAnswer[]
+
+  @@index([roomId])
+  @@index([sessionId])
+}
+
+model StopAnswer {
+  id               String       @id @default(cuid())
+  roundId          String
+  playerId         String
+  categoryId       String
+  answer           String
+  normalizedAnswer String
+  autoValid        Boolean      @default(false)
+  hostValid        Boolean?
+  unique           Boolean      @default(false)
+  points           Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  round            StopRound    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player           Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  category         StopCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([roundId])
+  @@index([playerId])
+  @@index([categoryId])
 }
