@@ -39,6 +39,18 @@ import {
   validateStopAnswer,
 } from "./stopEngine.js";
 import {
+  addLudoReaction,
+  addLudoSpeech,
+  createLudoRoom,
+  getPublicLudoRoom,
+  moveLudoPiece,
+  pruneLudoEphemera,
+  rollLudoDice,
+  startLudoGame,
+  syncLudoPlayers,
+  updateLudoSettings,
+} from "./ludoEngine.js";
+import {
   persistAnswerSubmitted,
   persistGameProgress,
   persistGameStarted,
@@ -84,6 +96,7 @@ app.use(cors({
 app.use(express.json());
 
 const rooms = new Map();
+const LUDO_AUTO_MOVE_DELAY_MS = 820;
 
 function getAuthToken(req) {
   const header = req.headers.authorization || "";
@@ -104,6 +117,7 @@ function requireAdmin(req, res, next) {
 
 function getRoomSummary(room, { revealCode = true } = {}) {
   const isStop = room.gameType === "stop";
+  const isLudo = room.gameType === "ludo";
   const categories = isStop
     ? (room.settings.categories || []).map((category) => category.name || category)
     : room.settings.categories;
@@ -122,8 +136,9 @@ function getRoomSummary(room, { revealCode = true } = {}) {
     roundSeconds: isStop ? room.settings.roundSeconds : room.settings.secondsPerQuestion,
     roundLimit: room.settings.roundLimit,
     roundNumber: room.roundNumber,
-    categories,
+    categories: isLudo ? [] : categories,
     difficulties: room.settings.difficulties,
+    colors: isLudo ? room.players.map((player) => player.colorName) : undefined,
     createdAt: room.createdAt,
   };
 }
@@ -248,6 +263,9 @@ function leaveRoom(socket, code, { disconnect = false } = {}) {
   if (room.hostSocketId === player.id) {
     room.hostSocketId = (room.players.find((item) => item.connected) || room.players[0])?.id;
   }
+  if (room.gameType === "ludo" && room.status === "lobby") {
+    syncLudoPlayers(room);
+  }
 
   void persistPlayerDisconnected(room, player.id);
   emitRoom(code);
@@ -285,6 +303,15 @@ app.get("/rooms", (_, res) => {
       .filter((room) => !room.settings.isPublic)
       .map((room) => getRoomSummary(room, { revealCode: false })),
   });
+});
+
+app.get("/rooms/:roomCode/summary", (req, res) => {
+  const code = String(req.params.roomCode || "").trim().toUpperCase();
+  const room = rooms.get(code);
+  if (!room || room.emptySince) {
+    return res.status(404).json({ message: "Sala nao encontrada." });
+  }
+  return res.json(getRoomSummary(room));
 });
 
 app.post("/admin/login", async (req, res) => {
@@ -433,7 +460,11 @@ const io = new Server(server, {
 function emitRoom(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
-  const payload = room.gameType === "stop" ? getPublicStopRoom(room) : getPublicRoom(room);
+  const payload = room.gameType === "stop"
+    ? getPublicStopRoom(room)
+    : room.gameType === "ludo"
+      ? getPublicLudoRoom(room)
+      : getPublicRoom(room);
   io.to(roomCode).emit("room:update", payload);
 }
 
@@ -450,8 +481,16 @@ io.on("connection", (socket) => {
     let code = makeCode();
     while (rooms.has(code)) code = makeCode();
 
-    const gameType = settings?.gameType === "stop" ? "stop" : "quiz";
+    const gameType = settings?.gameType === "stop" ? "stop" : settings?.gameType === "ludo" ? "ludo" : "quiz";
     const room = gameType === "stop" ? createStopRoom({
+      code,
+      hostSocketId: stablePlayerId,
+      playerName: cleanName,
+      playerId: stablePlayerId,
+      socketId: socket.id,
+      settings,
+      appSettings,
+    }) : gameType === "ludo" ? createLudoRoom({
       code,
       hostSocketId: stablePlayerId,
       playerName: cleanName,
@@ -490,6 +529,7 @@ io.on("connection", (socket) => {
 
     try {
       const player = joinRoom(room, { socketId: socket.id, playerName: cleanName, playerId: stablePlayerId });
+      if (room.gameType === "ludo") syncLudoPlayers(room);
       socket.join(code);
       void persistPlayerJoined(room, player);
       socket.emit("room:joined", { roomCode: code, playerId: player.id, reconnected: Boolean(reconnectingPlayer) });
@@ -506,6 +546,8 @@ io.on("connection", (socket) => {
     try {
       if (room.gameType === "stop") {
         updateStopSettings(room, settings, appSettings);
+      } else if (room.gameType === "ludo") {
+        updateLudoSettings(room, settings, appSettings);
       } else {
         updateSettings(room, settings, questionBank, appSettings);
       }
@@ -520,7 +562,7 @@ io.on("connection", (socket) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
     if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode iniciar a partida.");
-    if (room.gameType === "stop") return emitError(socket, "Use o inicio do modo Stop.");
+    if (room.gameType !== "quiz") return emitError(socket, "Use o inicio do modo correto.");
     try {
       startGame(room, questionBank);
       void persistGameStarted(room);
@@ -533,7 +575,7 @@ io.on("connection", (socket) => {
   socket.on("answer:submit", ({ roomCode, questionId, option } = {}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
-    if (room.gameType === "stop") return emitError(socket, "Use o envio de respostas do modo Stop.");
+    if (room.gameType !== "quiz") return emitError(socket, "Use o envio de respostas do modo correto.");
     try {
       const answer = submitAnswer(room, { socketId: socket.id, questionId, option });
       void persistAnswerSubmitted(room, answer);
@@ -555,7 +597,7 @@ io.on("connection", (socket) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if (!room) return;
     if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode avancar a rodada.");
-    if (room.gameType === "stop") return emitError(socket, "Use o avancar do modo Stop.");
+    if (room.gameType !== "quiz") return emitError(socket, "Use o avancar do modo correto.");
     advanceRound(room);
     void persistGameProgress(room);
     emitRoom(room.code);
@@ -680,6 +722,94 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("ludo:settings", ({ roomCode, settings } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "ludo") return;
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode alterar a partida.");
+    try {
+      updateLudoSettings(room, settings, appSettings);
+      void persistSettingsUpdated(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("ludo:start", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "ludo") return;
+    if (!isRoomHost(room, socket.id)) return emitError(socket, "Apenas o host pode iniciar a partida.");
+    try {
+      startLudoGame(room);
+      void persistGameStarted(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("ludo:rollDice", ({ roomCode } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "ludo") return;
+    try {
+      const result = rollLudoDice(room, { socketId: socket.id });
+      void persistGameProgress(room);
+      emitRoom(room.code);
+      if (result.autoMove?.pieceId) {
+        const code = room.code;
+        const playerId = result.autoMove.playerId;
+        const pieceId = result.autoMove.pieceId;
+        setTimeout(() => {
+          const currentRoom = rooms.get(code);
+          if (!currentRoom || currentRoom.gameType !== "ludo") return;
+          try {
+            moveLudoPiece(currentRoom, { socketId: playerId, pieceId, automatic: true });
+            void persistGameProgress(currentRoom);
+            emitRoom(code);
+          } catch {
+            // The move may already have been made manually or invalidated by a disconnect/restart.
+          }
+        }, LUDO_AUTO_MOVE_DELAY_MS);
+      }
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("ludo:movePiece", ({ roomCode, pieceId } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "ludo") return;
+    try {
+      moveLudoPiece(room, { socketId: socket.id, pieceId });
+      void persistGameProgress(room);
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("ludo:react", ({ roomCode, emoji } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "ludo") return;
+    try {
+      addLudoReaction(room, { socketId: socket.id, emoji });
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
+  socket.on("ludo:say", ({ roomCode, message } = {}) => {
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if (!room || room.gameType !== "ludo") return;
+    try {
+      addLudoSpeech(room, { socketId: socket.id, message });
+      emitRoom(room.code);
+    } catch (error) {
+      emitError(socket, error.message);
+    }
+  });
+
   socket.on("room:leave", ({ roomCode } = {}) => {
     const code = String(roomCode || "").toUpperCase();
     leaveRoom(socket, code);
@@ -712,6 +842,11 @@ setInterval(() => {
         void persistGameProgress(room);
         emitRoom(room.code);
       }
+      continue;
+    }
+
+    if (room.gameType === "ludo") {
+      if (pruneLudoEphemera(room)) emitRoom(room.code);
       continue;
     }
 

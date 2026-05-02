@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import LudoBoard from "./LudoBoard";
+import { LUDO_COLORS, getLudoBoardVariant } from "./ludoBoardGeometry";
 import {
   Crown,
   ArrowDown,
   ArrowUp,
   CheckCircle2,
+  Copy,
   Flag,
   Gamepad2,
   Globe2,
@@ -77,6 +80,30 @@ const DEFAULT_STOP_SETTINGS = {
   maxPlayers: 8,
   isPublic: true,
 };
+const DEFAULT_LUDO_SETTINGS = {
+  gameType: "ludo",
+  matchName: "Ludo",
+  maxPlayers: 6,
+  isPublic: true,
+};
+const LUDO_EMOJIS = ["😀", "😂", "😮", "👏", "🔥", "🎲", "😎", "😭"];
+const DIE_PIPS = {
+  0: [4],
+  1: [4],
+  2: [0, 8],
+  3: [0, 4, 8],
+  4: [0, 2, 6, 8],
+  5: [0, 2, 4, 6, 8],
+  6: [0, 2, 3, 5, 6, 8],
+};
+const DICE_ROTATIONS = {
+  1: "rotateX(0deg) rotateY(0deg)",
+  2: "rotateX(0deg) rotateY(-90deg)",
+  3: "rotateX(0deg) rotateY(-180deg)",
+  4: "rotateX(0deg) rotateY(90deg)",
+  5: "rotateX(-90deg) rotateY(0deg)",
+  6: "rotateX(90deg) rotateY(0deg)",
+};
 const emptyQuestionForm = {
   id: "",
   category: "League of Legends",
@@ -96,6 +123,84 @@ const normalizeClientText = (value) => String(value || "")
   .replace(/\s+/g, " ")
   .toLowerCase();
 const stopCategoryNames = (categories = []) => categories.map((category) => category.name || category);
+
+function renderDiePips(value) {
+  const active = new Set(DIE_PIPS[value || 0] || DIE_PIPS[0]);
+  return <span className={cx("die-pip-grid", !value && "idle")} aria-hidden="true">
+    {Array.from({ length: 9 }, (_, index) => <i key={index} className={active.has(index) ? "active" : ""} />)}
+  </span>;
+}
+
+function LudoDice({ value, canRoll, rollKey, onRoll, playerColor, label }) {
+  const [displayValue, setDisplayValue] = useState(value || 1);
+  const [visualRolling, setVisualRolling] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [particles, setParticles] = useState([]);
+
+  useEffect(() => {
+    if (!rollKey || !value) {
+      setDisplayValue(value || 1);
+      setVisualRolling(false);
+      return undefined;
+    }
+
+    setVisualRolling(true);
+    setShowResult(false);
+    setParticles([]);
+
+    const interval = setInterval(() => {
+      setDisplayValue(Math.floor(Math.random() * 6) + 1);
+    }, 72);
+
+    const reveal = setTimeout(() => {
+      clearInterval(interval);
+      setDisplayValue(value);
+      setVisualRolling(false);
+      setShowResult(true);
+      setParticles(Array.from({ length: 12 }, (_, index) => ({
+        id: `${rollKey}-${index}`,
+        angle: index * 30,
+      })));
+    }, 680);
+
+    const cleanup = setTimeout(() => {
+      setShowResult(false);
+      setParticles([]);
+    }, 1500);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(reveal);
+      clearTimeout(cleanup);
+    };
+  }, [rollKey, value]);
+
+  return <button
+    key={rollKey || "dice"}
+    className={cx("ludo-dice", canRoll && "ready", visualRolling && "rolling", showResult && "revealing")}
+    style={{ "--player-color": playerColor || "#a5b4fc" }}
+    disabled={!canRoll || visualRolling}
+    onClick={onRoll}
+    aria-label="Rolar dado"
+  >
+    {showResult && <span className="dice-result-pop">{value}</span>}
+    <span className="dice-stage" aria-hidden="true">
+      <span className="dice-cube" style={{ "--dice-rotation": DICE_ROTATIONS[displayValue] || DICE_ROTATIONS[1] }}>
+        {Array.from({ length: 6 }, (_, index) => <span key={index + 1} className={`dice-cube-face face-${index + 1}`}>
+          {renderDiePips(index + 1)}
+        </span>)}
+      </span>
+    </span>
+    <span className="dice-particles" aria-hidden="true">
+      {particles.map((particle) => <i key={particle.id} style={{ "--particle-angle": `${particle.angle}deg` }} />)}
+    </span>
+    <small>{label}</small>
+  </button>;
+}
+
+function ludoPlayerById(players = [], playerId) {
+  return players.find((player) => player.id === playerId) || null;
+}
 
 function getReviewWordStyle(answer = "", index = 0) {
   const length = Math.max(1, String(answer || "-").length);
@@ -138,6 +243,21 @@ function saveRoomSession(session) {
 
 function clearRoomSession() {
   localStorage.removeItem(ROOM_SESSION_KEY);
+}
+
+function getInviteRoomCode(pathname = window.location.pathname) {
+  const match = pathname.match(/^\/jogar\/([a-zA-Z0-9_-]+)\/?$/);
+  return match ? match[1].toUpperCase() : "";
+}
+
+function getRoomInviteUrl(code) {
+  return `${window.location.origin}/jogar/${String(code || "").toUpperCase()}`;
+}
+
+function setAppPath(path) {
+  if (window.location.pathname !== path) {
+    window.history.replaceState({}, "", path);
+  }
 }
 
 function withAuth(token) {
@@ -391,22 +511,30 @@ function AdminPanel() {
 
 export default function App() {
   const restoredSessionRef = useRef(readRoomSession());
+  const initialInviteRoomCode = getInviteRoomCode();
   const reconnectAttemptedRef = useRef(false);
   const letterBadgeRef = useRef(null);
   const firstStopAnswerRef = useRef(null);
   const reviewChatEndRef = useRef(null);
   const [playerName, setPlayerName] = useState(restoredSessionRef.current?.playerName || "");
-  const [roomCodeInput, setRoomCodeInput] = useState(restoredSessionRef.current?.roomCode || "");
+  const [roomCodeInput, setRoomCodeInput] = useState(initialInviteRoomCode || restoredSessionRef.current?.roomCode || "");
   const [roomCode, setRoomCode] = useState("");
   const [playerId, setPlayerId] = useState(restoredSessionRef.current?.playerId || getBrowserPlayerId());
   const [room, setRoom] = useState(null);
   const [error, setError] = useState("");
+  const [inviteRoomCode, setInviteRoomCode] = useState(initialInviteRoomCode);
+  const [inviteSummary, setInviteSummary] = useState(null);
+  const [inviteLoading, setInviteLoading] = useState(Boolean(initialInviteRoomCode));
+  const [shareMessage, setShareMessage] = useState("");
   const [selectedOption, setSelectedOption] = useState(null);
   const [selectedGameType, setSelectedGameType] = useState("quiz");
   const [stopSettings, setStopSettings] = useState(DEFAULT_STOP_SETTINGS);
+  const [ludoSettings, setLudoSettings] = useState(DEFAULT_LUDO_SETTINGS);
   const [stopAnswers, setStopAnswers] = useState({});
   const [reviewVotes, setReviewVotes] = useState({});
   const [reviewChatDraft, setReviewChatDraft] = useState("");
+  const [ludoSpeechDraft, setLudoSpeechDraft] = useState("");
+  const [ludoNow, setLudoNow] = useState(Date.now());
   const [letterReveal, setLetterReveal] = useState(null);
   const [timeLeft, setTimeLeft] = useState(30);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -417,16 +545,67 @@ export default function App() {
 
   const isHost = room?.hostSocketId === playerId;
   const isStopRoom = room?.gameType === "stop";
+  const isLudoRoom = room?.gameType === "ludo";
   const hasAnswered = Boolean(room?.currentAnswers?.[playerId]);
   const currentQuestion = room?.currentQuestion;
   const isAdminRoute = window.location.pathname.startsWith("/admin");
   const activeStopSettings = stopSettings;
+  const activeLudoSettings = ludoSettings;
   const stopCategories = activeStopSettings?.categories || DEFAULT_STOP_SETTINGS.categories;
   const stopReviewFinished = Boolean(room?.currentRound?.reviewFinished);
   const stopReviewComplete = Boolean(room?.currentRound?.reviewComplete);
   const activeTimerEnd = isStopRoom && room?.status === "stop-review" && !stopReviewComplete
     ? room?.reviewEndsAt
     : room?.roundEndsAt;
+  const showInvitePage = Boolean(inviteRoomCode && !room && !isAdminRoute);
+
+  useEffect(() => {
+    if (isAdminRoute) return undefined;
+    const syncInviteRoute = () => {
+      const code = getInviteRoomCode();
+      setInviteRoomCode(code);
+      if (code) setRoomCodeInput(code);
+    };
+
+    window.addEventListener("popstate", syncInviteRoute);
+    return () => window.removeEventListener("popstate", syncInviteRoute);
+  }, [isAdminRoute]);
+
+  useEffect(() => {
+    if (isAdminRoute || room || !inviteRoomCode) {
+      if (!inviteRoomCode) {
+        setInviteSummary(null);
+        setInviteLoading(false);
+      }
+      return undefined;
+    }
+
+    let active = true;
+    setInviteLoading(true);
+    setError("");
+
+    fetch(`${API_URL}/rooms/${inviteRoomCode}/summary`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.message || "Sala nao encontrada.");
+        return payload;
+      })
+      .then((summary) => {
+        if (!active) return;
+        setInviteSummary(summary);
+        setInviteLoading(false);
+      })
+      .catch((fetchError) => {
+        if (!active) return;
+        setInviteSummary(null);
+        setInviteLoading(false);
+        setError(fetchError.message || "Sala nao encontrada.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [inviteRoomCode, room, isAdminRoute]);
 
   useEffect(() => {
     if (isAdminRoute) return undefined;
@@ -454,6 +633,10 @@ export default function App() {
         setStopSettings((prev) => ({
           ...prev,
           maxPlayers: limits.defaultMaxPlayers,
+        }));
+        setLudoSettings((prev) => ({
+          ...prev,
+          maxPlayers: Math.min(6, Math.max(2, limits.defaultMaxPlayers || 6)),
         }));
       })
       .catch(() => {});
@@ -490,9 +673,12 @@ export default function App() {
     if (isAdminRoute) return undefined;
     const onJoined = ({ roomCode, playerId }) => {
       setRoomCode(roomCode);
+      setRoomCodeInput(roomCode);
+      setInviteRoomCode(roomCode);
       setPlayerId(playerId);
       localStorage.setItem(PLAYER_ID_KEY, playerId);
       saveRoomSession({ roomCode, playerId, playerName });
+      setAppPath(`/jogar/${roomCode}`);
       setError("");
     };
     const onLeft = () => {
@@ -500,13 +686,18 @@ export default function App() {
       setPlayerId(getBrowserPlayerId());
       setRoom(null);
       setSelectedOption(null);
+      setInviteRoomCode("");
+      setInviteSummary(null);
       clearRoomSession();
+      setAppPath("/");
       setError("");
     };
     const onUpdate = (payload) => {
       setRoom(payload);
       if (payload.gameType === "stop") {
         setStopSettings(payload.settings);
+      } else if (payload.gameType === "ludo") {
+        setLudoSettings(payload.settings);
       } else {
         setSettings(payload.settings);
       }
@@ -529,6 +720,7 @@ export default function App() {
     if (isAdminRoute || room || reconnectAttemptedRef.current) return undefined;
     const session = restoredSessionRef.current;
     if (!session?.roomCode || !session?.playerId || !session?.playerName) return undefined;
+    if (inviteRoomCode && String(session.roomCode).toUpperCase() !== inviteRoomCode) return undefined;
 
     const reconnect = () => {
       reconnectAttemptedRef.current = true;
@@ -546,7 +738,7 @@ export default function App() {
 
     socket.once("connect", reconnect);
     return () => socket.off("connect", reconnect);
-  }, [room, isAdminRoute]);
+  }, [room, isAdminRoute, inviteRoomCode]);
 
   useEffect(() => {
     setSelectedOption(null);
@@ -602,18 +794,29 @@ export default function App() {
     reviewChatEndRef.current?.scrollIntoView({ block: "end" });
   }, [isStopRoom, room?.status, room?.reviewChat?.length]);
 
+  useEffect(() => {
+    if (!isLudoRoom) return undefined;
+    const interval = setInterval(() => setLudoNow(Date.now()), 500);
+    return () => clearInterval(interval);
+  }, [isLudoRoom]);
+
   const answeredCount = useMemo(() => Object.keys(room?.currentAnswers || {}).length, [room?.currentAnswers]);
 
   function createRoom(gameType = selectedGameType) {
     const payload = gameType === "stop"
       ? { ...stopSettings, gameType: "stop" }
+      : gameType === "ludo"
+        ? { ...ludoSettings, gameType: "ludo" }
       : { ...settings, gameType: "quiz" };
     setSelectedGameType(gameType);
     socket.emit("room:create", { playerName, playerId, settings: payload });
   }
 
   function joinRoom(code = roomCodeInput) {
-    socket.emit("room:join", { playerName, playerId, roomCode: code });
+    const targetCode = String(code || "").trim().toUpperCase();
+    setRoomCodeInput(targetCode);
+    setError("");
+    socket.emit("room:join", { playerName, playerId, roomCode: targetCode });
   }
 
   function leaveRoom() {
@@ -624,16 +827,45 @@ export default function App() {
     }
   }
 
+  async function copyRoomLink() {
+    const link = getRoomInviteUrl(room?.code || roomCode);
+    setShareMessage("Link copiado");
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = link;
+        input.setAttribute("readonly", "");
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+      }
+    } catch {
+      setShareMessage(link);
+    }
+    window.setTimeout(() => setShareMessage(""), 2200);
+  }
+
   function patchSettings(patch) {
     const next = { ...settings, ...patch };
     setSettings(next);
-    if (roomCode && !isStopRoom) socket.emit("room:settings", { roomCode, settings: next });
+    if (roomCode && !isStopRoom && !isLudoRoom) socket.emit("room:settings", { roomCode, settings: next });
   }
 
   function patchStopSettings(patch) {
     const next = { ...stopSettings, ...patch, gameType: "stop" };
     setStopSettings(next);
     if (roomCode && isStopRoom) socket.emit("stop:settings", { roomCode, settings: next });
+  }
+
+  function patchLudoSettings(patch) {
+    const next = { ...ludoSettings, ...patch, gameType: "ludo" };
+    setLudoSettings(next);
+    if (roomCode && isLudoRoom) socket.emit("ludo:settings", { roomCode, settings: next });
   }
 
   function toggleSettingList(key, value) {
@@ -723,6 +955,30 @@ export default function App() {
     setReviewChatDraft("");
   }
 
+  function startLudo() {
+    socket.emit("ludo:start", { roomCode });
+  }
+
+  function rollLudoDice() {
+    socket.emit("ludo:rollDice", { roomCode });
+  }
+
+  function moveLudoPiece(pieceId) {
+    socket.emit("ludo:movePiece", { roomCode, pieceId });
+  }
+
+  function reactLudo(emoji) {
+    socket.emit("ludo:react", { roomCode, emoji });
+  }
+
+  function sayLudo(event) {
+    event?.preventDefault();
+    const message = ludoSpeechDraft.trim();
+    if (!message) return;
+    socket.emit("ludo:say", { roomCode, message });
+    setLudoSpeechDraft("");
+  }
+
   function submit(option) {
     if (!currentQuestion || hasAnswered) return;
     setSelectedOption(option);
@@ -736,11 +992,16 @@ export default function App() {
   function renderRoomCard(summary, privateRoom = false) {
     const isFull = summary.playerCount >= summary.maxPlayers;
     const stopMode = summary.gameType === "stop";
-    const modeLabel = stopMode ? "Stop / Adedanha" : "Quiz de Cultura Pop";
-    const roundsLabel = stopMode
+    const ludoMode = summary.gameType === "ludo";
+    const modeLabel = ludoMode ? "Ludo" : stopMode ? "Stop / Adedanha" : "Quiz de Cultura Pop";
+    const roundsLabel = ludoMode
+      ? "2 a 6 jogadores"
+      : stopMode
       ? `${summary.totalRounds || 0} rodadas de ${summary.roundSeconds || 0}s`
       : `${summary.totalQuestions} perguntas`;
-    const categoryLine = stopMode
+    const categoryLine = ludoMode
+      ? `Cores: ${(summary.colors || []).slice(0, 4).join(", ") || "automaticas"}`
+      : stopMode
       ? `${summary.categories?.length || 0} temas: ${(summary.categories || []).slice(0, 3).join(", ")}`
       : (summary.categories || []).slice(0, 3).join(", ");
     return <div className="room-card" key={`${privateRoom ? "private" : "public"}-${summary.code || summary.createdAt}`}>
@@ -756,6 +1017,54 @@ export default function App() {
         ? <span className="room-chip">Código obrigatório</span>
         : <button className="mini-button" disabled={isFull} onClick={() => joinRoom(summary.code)}>{isFull ? "Lotada" : "Entrar"}</button>}
     </div>;
+  }
+
+  function renderInvitePage() {
+    const summary = inviteSummary;
+    const stopMode = summary?.gameType === "stop";
+    const ludoMode = summary?.gameType === "ludo";
+    const modeLabel = ludoMode ? "Ludo" : stopMode ? "Stop / Adedanha" : "Quiz de Cultura Pop";
+    const privacyLabel = summary?.isPublic ? "Publica" : "Privada";
+    const statusLabel = summary?.status === "lobby"
+      ? "Aguardando jogadores"
+      : summary?.status === "round_finished"
+      ? "Entre antes da proxima rodada"
+      : summary
+      ? "Partida em andamento"
+      : "Sala indisponivel";
+    const canJoinInvite = Boolean(summary && playerName.trim() && !inviteLoading);
+
+    return <main className="page invite-page">
+      <section className="hero compact-hero invite-hero">
+        <div className="badge"><Wifi size={16} /> Convite de sala</div>
+        <h1>{inviteRoomCode}</h1>
+        <p>{summary ? `${modeLabel} - ${summary.playerCount}/${summary.maxPlayers} jogadores - ${privacyLabel}` : "Confira o convite e informe seu nome para entrar."}</p>
+      </section>
+
+      <section className="invite-layout">
+        <form className="panel invite-panel" onSubmit={(event) => {
+          event.preventDefault();
+          if (canJoinInvite) joinRoom(inviteRoomCode);
+        }}>
+          <div className="panel-title"><LogIn /> Entrar pela sala</div>
+          <div className="invite-code">{inviteRoomCode}</div>
+          <div className="round-meta"><div>Status</div><strong>{inviteLoading ? "Carregando..." : statusLabel}</strong></div>
+          {summary && <>
+            <div className="round-meta"><div>Jogo</div><strong>{modeLabel}</strong></div>
+            <div className="round-meta"><div>Vagas</div><strong>{summary.playerCount}/{summary.maxPlayers}</strong></div>
+          </>}
+          <label>Seu nome<input autoFocus value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Ex.: Player 2" /></label>
+          <button className="primary big" disabled={!canJoinInvite}><LogIn size={18} /> Entrar na sala</button>
+          <button className="secondary" type="button" onClick={() => {
+            setInviteRoomCode("");
+            setInviteSummary(null);
+            setError("");
+            setAppPath("/");
+          }}><Home size={18} /> Voltar ao inicio</button>
+          {error && <div className="hint invite-error">{error}</div>}
+        </form>
+      </section>
+    </main>;
   }
 
   function renderRoundSummary(final = false) {
@@ -1064,7 +1373,112 @@ export default function App() {
     </section>;
   }
 
+  function renderLudoLobby() {
+    const canStart = isHost && room.players.length >= 2 && room.players.length <= 6;
+
+    return <section className="game-grid ludo-lobby">
+      <aside className="panel">
+        <div className="panel-title"><Users /> Jogadores</div>
+        <div className="round-meta"><div>Vagas</div><strong>{room.players.length}/{activeLudoSettings.maxPlayers}</strong></div>
+        <div className="players">
+          {room.players.map((player) => <div className="player ludo-player-row" key={player.id}>
+            <span><i style={{ "--player-color": player.colorHex || LUDO_COLORS[player.color] }} /> {player.name}</span>
+            <strong>{player.colorName}</strong>
+          </div>)}
+        </div>
+        <button className="secondary big" onClick={leaveRoom}><LogOut size={19} /> Sair</button>
+      </aside>
+
+      <section className="panel ludo-settings">
+        <div className="panel-title"><Gamepad2 /> Configuracao Ludo</div>
+        <div className="form-grid">
+          <label>Nome da partida<input disabled={!isHost} value={activeLudoSettings.matchName || ""} onChange={(event) => patchLudoSettings({ matchName: event.target.value })} /></label>
+          <label>Participantes<input disabled={!isHost} type="number" min="2" max="6" value={activeLudoSettings.maxPlayers} onChange={(event) => patchLudoSettings({ maxPlayers: Number(event.target.value) })} /></label>
+        </div>
+        <div className="switch-grid">
+          <label className="check-row"><input disabled={!isHost} type="checkbox" checked={Boolean(activeLudoSettings.isPublic)} onChange={(event) => patchLudoSettings({ isPublic: event.target.checked })} /> Sala publica</label>
+        </div>
+        <div className="hint">Regras: sair com 6, captura, chegada ao final da peca da turno extra, casas seguras, chegada exata e tres 6 seguidos perde a vez.</div>
+        {isHost ? <button className="primary big" disabled={!canStart} onClick={startLudo}><Play size={20} /> Iniciar Ludo</button> : <div className="hint">Aguardando o host iniciar a partida.</div>}
+      </section>
+    </section>;
+  }
+
+  function renderLudoBoard() {
+    return <LudoBoard room={room} now={ludoNow} movePiece={moveLudoPiece} />;
+  }
+
+  function renderLudoGame() {
+    const currentPlayer = ludoPlayerById(room.players, room.currentTurnPlayerId);
+    const isMyTurn = currentPlayer?.id === playerId;
+    const canRoll = room.status === "ludo-playing" && isMyTurn && !room.dice?.rolled;
+    const winner = room.winner;
+    const boardVariant = room.board?.variant || getLudoBoardVariant(room.settings?.maxPlayers || room.players.length);
+    const boardLabel = boardVariant === "classic" ? "Ludo classico" : "Ludo 6 cores";
+    const waitingAutoMove = room.lastAction?.type === "roll" && (room.legalMoves || []).length === 1;
+    const diceRollKey = room.lastAction?.type === "roll" ? room.lastAction.createdAt : null;
+    const diceLabel = canRoll ? "Rolar" : waitingAutoMove ? "Rolando" : isMyTurn ? "Mova uma peca" : "Aguarde";
+
+    if (room.status === "ludo-finished") {
+      return <section className="panel final ludo-final">
+        <Crown size={56} />
+        <p>Ludo encerrado</p>
+        <h1>{winner?.name || room.ranking?.[0]?.name || "Vencedor"}</h1>
+        <div className="ranking">{(room.ranking || []).map((player, index) => <div className="player score" key={player.id}><span>{index + 1}. {player.name}</span><strong>{player.finishedPieces || player.score || 0}/4</strong></div>)}</div>
+        <div className="final-actions">
+          {isHost && <button className="primary" onClick={startLudo}><RotateCcw size={19} /> Jogar novamente</button>}
+          <button className="secondary" onClick={leaveRoom}><Home size={19} /> Voltar ao inicio</button>
+        </div>
+      </section>;
+    }
+
+    return <section className="ludo-game-layout">
+      <div className="panel ludo-board-panel">
+        <div className="ludo-game-head">
+          <div>
+            <div className="badge"><Gamepad2 size={15} /> {boardLabel}</div>
+            <h2>{currentPlayer ? `Vez de ${currentPlayer.name}` : "Ludo"}</h2>
+          </div>
+          <LudoDice
+            value={room.dice?.value}
+            canRoll={canRoll}
+            rollKey={diceRollKey}
+            onRoll={rollLudoDice}
+            playerColor={currentPlayer?.colorHex || LUDO_COLORS[currentPlayer?.color] || "#a5b4fc"}
+            label={diceLabel}
+          />
+        </div>
+        {renderLudoBoard()}
+      </div>
+
+      <aside className="panel ludo-side">
+        <div className="panel-title"><Trophy /> Jogadores</div>
+        <div className="players">
+          {room.players.map((player) => <div className={cx("player ludo-player-row", player.id === room.currentTurnPlayerId && "active")} key={player.id}>
+            <span><i style={{ "--player-color": player.colorHex || LUDO_COLORS[player.color] }} /> {player.name}</span>
+            <strong>{player.score || 0}/4</strong>
+          </div>)}
+        </div>
+
+        <div className="section-label">Reacoes</div>
+        <div className="emoji-bar">
+          {LUDO_EMOJIS.map((emoji) => <button key={emoji} onClick={() => reactLudo(emoji)}>{emoji}</button>)}
+        </div>
+
+        <form className="ludo-say-form" onSubmit={sayLudo}>
+          <input value={ludoSpeechDraft} maxLength={70} onChange={(event) => setLudoSpeechDraft(event.target.value)} placeholder="Falar no balao" />
+          <button className="chat-send" type="submit" disabled={!ludoSpeechDraft.trim()} title="Enviar fala"><Send size={18} /></button>
+        </form>
+
+        <div className="hint">{room.lastAction?.type === "triple-six" ? "Tres 6 seguidos: perdeu a vez." : room.lastAction?.type === "finish-piece" ? "Peca finalizada. Voce ganhou uma jogada extra." : room.lastAction?.type === "capture" ? "Captura feita. A peca voltou para a base." : room.lastAction?.automatic ? "Jogada unica: peca movida automaticamente." : waitingAutoMove ? "Jogada unica: a peca vai se mover apos o dado." : "Clique em uma peca destacada depois de rolar o dado."}</div>
+        <button className="secondary big" onClick={leaveRoom}><LogOut size={19} /> Sair</button>
+      </aside>
+    </section>;
+  }
+
   if (isAdminRoute) return <AdminPanel />;
+
+  if (showInvitePage) return renderInvitePage();
 
   if (!room) {
     return <main className="page">
@@ -1081,9 +1495,10 @@ export default function App() {
           <div className="mode-grid">
             {renderGameModeCard("quiz", "Quiz de Cultura Pop", "Perguntas de multipla escolha com tempo, ranking e rodadas rapidas.", Gamepad2)}
             {renderGameModeCard("stop", "Stop / Adedanha", "Temas livres criados pelo host, letra sorteada, STOP e revisao de respostas.", ListChecks)}
+            {renderGameModeCard("ludo", "Ludo", "Tabuleiro para 2 a 6 jogadores, dado, capturas, emojis e baloes.", Gamepad2)}
           </div>
           <div className="section-label">Participantes</div>
-          <label>Maximo: {selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers}<input type="range" min="1" max={gameLimits.maxPlayers} value={selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers} onChange={(e) => selectedGameType === "stop" ? patchStopSettings({ maxPlayers: Number(e.target.value) }) : patchSettings({ maxPlayers: Number(e.target.value) })} /></label>
+          <label>Maximo: {selectedGameType === "ludo" ? ludoSettings.maxPlayers : selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers}<input type="range" min={selectedGameType === "ludo" ? "2" : "1"} max={selectedGameType === "ludo" ? "6" : gameLimits.maxPlayers} value={selectedGameType === "ludo" ? ludoSettings.maxPlayers : selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers} onChange={(e) => selectedGameType === "ludo" ? patchLudoSettings({ maxPlayers: Number(e.target.value) }) : selectedGameType === "stop" ? patchStopSettings({ maxPlayers: Number(e.target.value) }) : patchSettings({ maxPlayers: Number(e.target.value) })} /></label>
           {selectedGameType === "quiz" && <>
             <div className="section-label">Rodadas</div>
             <div className="segmented">
@@ -1093,12 +1508,13 @@ export default function App() {
             {settings.roundLimit > 0 && <label>Quantidade: {settings.roundLimit}<input type="range" min="1" max={gameLimits.maxRounds} value={settings.roundLimit} onChange={(e) => patchSettings({ roundLimit: Number(e.target.value) })} /></label>}
           </>}
           {selectedGameType === "stop" && <div className="hint">A configuracao completa do Stop fica no lobby: temas, letras, tempo, rodadas e pontuacao.</div>}
+          {selectedGameType === "ludo" && <div className="hint">O Ludo usa cores automaticas, regras classicas e partida para 2 a 6 jogadores.</div>}
           <div className="section-label">Privacidade</div>
           <div className="segmented">
-            <button className={cx((selectedGameType === "stop" ? stopSettings.isPublic : settings.isPublic) && "active")} onClick={() => selectedGameType === "stop" ? patchStopSettings({ isPublic: true }) : patchSettings({ isPublic: true })}><Globe2 size={16} /> Publica</button>
-            <button className={cx(!(selectedGameType === "stop" ? stopSettings.isPublic : settings.isPublic) && "active")} onClick={() => selectedGameType === "stop" ? patchStopSettings({ isPublic: false }) : patchSettings({ isPublic: false })}><Lock size={16} /> Privada</button>
+            <button className={cx((selectedGameType === "ludo" ? ludoSettings.isPublic : selectedGameType === "stop" ? stopSettings.isPublic : settings.isPublic) && "active")} onClick={() => selectedGameType === "ludo" ? patchLudoSettings({ isPublic: true }) : selectedGameType === "stop" ? patchStopSettings({ isPublic: true }) : patchSettings({ isPublic: true })}><Globe2 size={16} /> Publica</button>
+            <button className={cx(!(selectedGameType === "ludo" ? ludoSettings.isPublic : selectedGameType === "stop" ? stopSettings.isPublic : settings.isPublic) && "active")} onClick={() => selectedGameType === "ludo" ? patchLudoSettings({ isPublic: false }) : selectedGameType === "stop" ? patchStopSettings({ isPublic: false }) : patchSettings({ isPublic: false })}><Lock size={16} /> Privada</button>
           </div>
-          <button className="primary big" onClick={() => createRoom(selectedGameType)}>Criar sala {selectedGameType === "stop" ? "Stop" : "Quiz"}</button>
+          <button className="primary big" onClick={() => createRoom(selectedGameType)}>Criar sala {selectedGameType === "ludo" ? "Ludo" : selectedGameType === "stop" ? "Stop" : "Quiz"}</button>
         </div>
 
         <div className="panel">
@@ -1132,20 +1548,27 @@ export default function App() {
   return <main className="page">
     <header className="topbar">
       <div>
-        <div className="badge"><Wifi size={15} /> Sala {room.code} - {room.gameType === "stop" ? "Stop / Adedanha" : "Quiz"} - {room.settings.isPublic ? "Publica" : "Privada"}</div>
-        <h2>{isStopRoom
+        <div className="badge"><Wifi size={15} /> Sala {room.code} - {isLudoRoom ? "Ludo" : room.gameType === "stop" ? "Stop / Adedanha" : "Quiz"} - {room.settings.isPublic ? "Publica" : "Privada"}</div>
+        <h2>{isLudoRoom
+          ? room.status === "lobby" ? "Lobby Ludo" : room.status === "ludo-finished" ? "Ranking final" : "Partida Ludo"
+          : isStopRoom
           ? room.status === "lobby" ? "Lobby Stop" : room.status === "stop-review" ? "Revisao Stop" : room.status === "stop-finished" ? "Ranking final" : "Rodada Stop"
           : room.status === "lobby" ? "Lobby da partida" : room.status === "round_finished" ? "Fim da rodada" : room.status === "finished" ? "Resultado final" : "Partida"}</h2>
       </div>
-      <div className="room-code">{room.code}</div>
+      <div className="room-share">
+        <div className="room-code">{room.code}</div>
+        <button className="secondary inline-action share-button" onClick={copyRoomLink}><Copy size={17} /> {shareMessage || "Copiar link"}</button>
+      </div>
     </header>
 
     {isStopRoom && room.status === "lobby" && renderStopLobby()}
     {isStopRoom && room.status === "stop-playing" && renderStopPlaying()}
     {isStopRoom && room.status === "stop-review" && renderStopReview()}
     {isStopRoom && room.status === "stop-finished" && renderStopFinal()}
+    {isLudoRoom && room.status === "lobby" && renderLudoLobby()}
+    {isLudoRoom && ["ludo-playing", "ludo-finished"].includes(room.status) && renderLudoGame()}
 
-    {!isStopRoom && room.status === "lobby" && <section className="game-grid">
+    {!isStopRoom && !isLudoRoom && room.status === "lobby" && <section className="game-grid">
       <div className="panel">
         <div className="panel-title"><Users /> Jogadores</div>
         <div className="round-meta"><div>Vagas</div><strong>{room.players.length}/{room.settings.maxPlayers}</strong></div>
@@ -1180,7 +1603,7 @@ export default function App() {
       </div>
     </section>}
 
-    {!isStopRoom && ["playing", "reveal"].includes(room.status) && currentQuestion && <section className="game-grid">
+    {!isStopRoom && !isLudoRoom && ["playing", "reveal"].includes(room.status) && currentQuestion && <section className="game-grid">
       <aside className="panel">
         <div className="panel-title"><Trophy /> Placar</div>
         <div className="players">{room.ranking.map((p, i) => <div className="player score" key={p.id}><span>{i + 1}. {p.name}</span><strong>{p.score}</strong></div>)}</div>
@@ -1203,8 +1626,8 @@ export default function App() {
       </section>
     </section>}
 
-    {!isStopRoom && room.status === "round_finished" && renderRoundSummary(false)}
-    {!isStopRoom && room.status === "finished" && renderRoundSummary(true)}
+    {!isStopRoom && !isLudoRoom && room.status === "round_finished" && renderRoundSummary(false)}
+    {!isStopRoom && !isLudoRoom && room.status === "finished" && renderRoundSummary(true)}
     {error && <div className="toast error">{error}</div>}
   </main>;
 }

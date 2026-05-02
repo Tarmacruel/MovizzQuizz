@@ -44,7 +44,31 @@ function serializeDeck(room) {
     };
   }
 
+  if (room.gameType === "ludo") {
+    return {
+      pieces: room.pieces || [],
+      currentTurnPlayerId: room.currentTurnPlayerId || null,
+      dice: room.dice || null,
+      legalMoves: room.legalMoves || [],
+      lastAction: room.lastAction || null,
+      winner: room.winner || null,
+    };
+  }
+
   return (room.questions || []).map(serializeQuestion);
+}
+
+function serializeHistory(room) {
+  if (room.gameType === "stop") return room.rounds || [];
+  if (room.gameType === "ludo") {
+    return {
+      ranking: room.ranking || [],
+      reactions: room.reactions || [],
+      speechBubbles: room.speechBubbles || {},
+      lastAction: room.lastAction || null,
+    };
+  }
+  return room.history || [];
 }
 
 async function upsertRoom(room) {
@@ -125,7 +149,7 @@ async function createSession(room, roomId) {
       currentIndex: room.currentIndex ?? room.roundNumber ?? 0,
       deck: serializeDeck(room),
       settings: room.settings,
-      history: room.gameType === "stop" ? room.rounds || [] : room.history || [],
+      history: serializeHistory(room),
       startedAt: dateFromTimestamp(room.roundStartedAt || room.currentRound?.startedAt),
     },
     select: { id: true },
@@ -149,7 +173,7 @@ async function resolveSessionId(room, roomId) {
     return session.id;
   }
 
-  if (room.gameType !== "stop" && !room.questions.length) return null;
+  if (!["stop", "ludo"].includes(room.gameType) && !room.questions.length) return null;
   return createSession(room, roomId);
 }
 
@@ -236,8 +260,8 @@ export async function persistGameProgress(room) {
         currentIndex: room.currentIndex ?? room.roundNumber ?? 0,
         deck: serializeDeck(room),
         settings: room.settings,
-        history: room.gameType === "stop" ? room.rounds || [] : room.history || [],
-        finishedAt: ["round_finished", "finished", "stop-finished"].includes(room.status) ? new Date() : undefined,
+        history: serializeHistory(room),
+        finishedAt: ["round_finished", "finished", "stop-finished", "ludo-finished"].includes(room.status) ? new Date() : undefined,
       },
     });
 

@@ -1,6 +1,6 @@
 # MovizzQuizz
 
-Plataforma multiplayer de jogos de sala. O MovizzQuizz preserva o quiz de filmes, séries e cultura pop e adiciona o modo **Stop / Adedanha**, com temas 100% personalizados pelo host, letras sorteadas, STOP, revisão de respostas e ranking final em tempo real.
+Plataforma multiplayer de jogos de sala. O MovizzQuizz preserva o quiz de filmes, séries e cultura pop e adiciona os modos **Stop / Adedanha** e **Ludo**, com salas por código, tempo real e ranking.
 
 ## Stack
 
@@ -119,10 +119,11 @@ Para automação sem prompt, use `resetar.bat /y /nopause`, `atualizar.bat /y /n
 
 ## Salas
 
-- Na tela inicial o jogador escolhe entre **Quiz de Cultura Pop** e **Stop / Adedanha**.
+- Na tela inicial o jogador escolhe entre **Quiz de Cultura Pop**, **Stop / Adedanha** e **Ludo**.
 - A entrada por código funciona para qualquer modo de jogo.
-- Toda sala possui `gameType`: `quiz` ou `stop`.
+- Toda sala possui `gameType`: `quiz`, `stop` ou `ludo`.
 - O navegador guarda a identidade do jogador e tenta reconectar automaticamente na mesma sala após F5/reload.
+- Toda sala pode ser compartilhada pelo link `/jogar/CODIGO`; quem abre o convite informa o nome e entra direto na sala.
 - O host escolhe se a sala é pública ou privada.
 - O host define o máximo de participantes, de 1 a 20.
 - O host define rodadas livres ou um número pré-definido de rodadas.
@@ -201,6 +202,57 @@ stop-finished
 ```
 
 Persistência: o Stop roda em memória na sessão atual e o Prisma já possui `gameType` em `Room`/`GameSession`, campos JSON para settings/history e tabelas preparadas para `StopRound`, `StopCategory` e `StopAnswer`.
+
+## Modo Ludo
+
+O Ludo funciona em tempo real com regras validadas pelo servidor:
+
+- 2 a 6 jogadores;
+- cores atribuídas automaticamente por ordem de entrada;
+- tabuleiro classico quando a sala esta configurada para ate 4 jogadores, com 52 casas externas e 6 casas finais;
+- tabuleiro radial estilo pizza quando a sala esta configurada para 5 ou 6 jogadores, com 72 casas externas, 6 casas finais e acabamento 3D;
+- 4 peças por jogador;
+- precisa tirar 6 para sair da base;
+- 6 dá turno extra;
+- finalizar uma peça também dá turno extra;
+- três 6 seguidos faz o jogador perder a vez;
+- capturas mandam peças adversárias de volta para a base;
+- casas seguras impedem captura;
+- chegada exige número exato;
+- a partida termina quando o primeiro jogador finaliza as 4 peças.
+
+Interações do Ludo:
+
+- dado 3D animado;
+- peças clicáveis apenas quando o movimento é válido, com deslocamento animado no tabuleiro;
+- movimento automático quando, após rolar o dado, existe apenas uma peça possível de jogar;
+- destaque do jogador da vez;
+- reações rápidas com emojis;
+- fala curta em balão temporário sobre o ícone do jogador;
+- reconexão por F5/reload usando a identidade salva no navegador.
+
+A escolha visual e tambem a regra de tamanho do tabuleiro sao automaticas e vem de `settings.maxPlayers`: configuracoes ate 4 usam o layout classico curto de 52 casas; configuracoes com 5 ou 6 usam o layout radial de 6 setores com 72 casas.
+
+Eventos Socket.IO adicionados para Ludo:
+
+```txt
+ludo:settings
+ludo:start
+ludo:rollDice
+ludo:movePiece
+ludo:react
+ludo:say
+```
+
+Estados principais do Ludo:
+
+```txt
+lobby
+ludo-playing
+ludo-finished
+```
+
+Persistência: o Ludo usa `gameType`, `settings`, `deck` e `history` JSON em `Room`/`GameSession`; não exige migration própria nesta versão.
 
 ## Admin
 
