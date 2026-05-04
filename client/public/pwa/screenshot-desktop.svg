@@ -1,0 +1,25 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="900" fill="#070713"/>
+  <circle cx="250" cy="90" r="360" fill="#6366F1" fill-opacity="0.28"/>
+  <circle cx="1380" cy="780" r="420" fill="#EC4899" fill-opacity="0.22"/>
+  <rect x="220" y="110" width="1160" height="680" rx="52" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.14)" stroke-width="3"/>
+  <rect x="270" y="160" width="530" height="580" rx="42" fill="rgba(0,0,0,.23)"/>
+  <rect x="328" y="222" width="84" height="84" rx="28" fill="url(#g)"/>
+  <text x="328" y="372" fill="#A5B4FC" font-family="Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="7">MOVIZZQUIZZ</text>
+  <text x="328" y="485" fill="white" font-family="Arial, sans-serif" font-size="90" font-weight="900">Entre</text>
+  <text x="328" y="585" fill="white" font-family="Arial, sans-serif" font-size="90" font-weight="900">para jogar.</text>
+  <rect x="840" y="160" width="490" height="82" rx="28" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="2"/>
+  <text x="900" y="214" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="800">Conta</text>
+  <rect x="840" y="268" width="490" height="82" rx="28" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="2"/>
+  <text x="900" y="322" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="800">Visitante</text>
+  <rect x="840" y="376" width="490" height="82" rx="28" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.15)" stroke-width="2"/>
+  <text x="900" y="430" fill="white" font-family="Arial, sans-serif" font-size="28" font-weight="800">Admin</text>
+  <rect x="840" y="506" width="490" height="70" rx="24" fill="url(#g)"/>
+  <text x="1010" y="551" fill="white" font-family="Arial, sans-serif" font-size="25" font-weight="900">Entrar</text>
+  <defs>
+    <linearGradient id="g" x1="270" y1="160" x2="1330" y2="576" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+</svg>
