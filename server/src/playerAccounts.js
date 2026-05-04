@@ -3,7 +3,7 @@ import { hashPassword, hashToken, makeToken, verifyPassword } from "./security.j
 
 export const PLAYER_ACCOUNT_SESSION_DAYS = 30;
 const HANDLE_PATTERN = /^[a-z0-9_-]{3,24}$/;
-const PIN_PATTERN = /^\d{4,8}$/;
+const PASSWORD_PATTERN = /^.{4,64}$/;
 
 export function hasAccountDatabase() {
   return Boolean(process.env.DATABASE_URL);
@@ -28,9 +28,15 @@ function cleanDisplayName(value, fallbackHandle) {
   return clean || fallbackHandle;
 }
 
-export function validatePin(pin) {
-  return PIN_PATTERN.test(String(pin || ""));
+function resolvePassword({ password, pin } = {}) {
+  return String(password ?? pin ?? "");
 }
+
+export function validateAccountPassword(value) {
+  return PASSWORD_PATTERN.test(String(value || ""));
+}
+
+export const validatePin = validateAccountPassword;
 
 function ensureDatabase() {
   if (!hasAccountDatabase()) {
@@ -67,16 +73,18 @@ export async function createPlayerAccountSession(accountId) {
   return token;
 }
 
-export async function registerPlayerAccount({ handle, displayName, pin } = {}) {
+export async function registerPlayerAccount({ handle, displayName, password, pin } = {}) {
   ensureDatabase();
   const normalizedHandle = normalizeHandle(handle);
+  const cleanPassword = resolvePassword({ password, pin });
+
   if (!HANDLE_PATTERN.test(normalizedHandle)) {
-    const error = new Error("Use um apelido com 3 a 24 letras, numeros, _ ou -.");
+    const error = new Error("Use um login com 3 a 24 letras, numeros, _ ou -.");
     error.statusCode = 400;
     throw error;
   }
-  if (!validatePin(pin)) {
-    const error = new Error("O PIN precisa ter de 4 a 8 digitos.");
+  if (!validateAccountPassword(cleanPassword)) {
+    const error = new Error("A senha precisa ter de 4 a 64 caracteres.");
     error.statusCode = 400;
     throw error;
   }
@@ -86,14 +94,14 @@ export async function registerPlayerAccount({ handle, displayName, pin } = {}) {
       data: {
         handle: normalizedHandle,
         displayName: cleanDisplayName(displayName || handle, normalizedHandle),
-        pinHash: hashPassword(String(pin)),
+        pinHash: hashPassword(cleanPassword),
       },
     });
     const token = await createPlayerAccountSession(account.id);
     return { account, token };
   } catch (error) {
     if (error?.code === "P2002") {
-      const duplicate = new Error("Este apelido ja esta em uso.");
+      const duplicate = new Error("Este login ja esta em uso.");
       duplicate.statusCode = 409;
       throw duplicate;
     }
@@ -101,15 +109,16 @@ export async function registerPlayerAccount({ handle, displayName, pin } = {}) {
   }
 }
 
-export async function loginPlayerAccount({ handle, pin } = {}) {
+export async function loginPlayerAccount({ handle, password, pin } = {}) {
   ensureDatabase();
   const normalizedHandle = normalizeHandle(handle);
+  const cleanPassword = resolvePassword({ password, pin });
   const account = await prisma.playerAccount.findUnique({
     where: { handle: normalizedHandle },
   });
 
-  if (!account || !validatePin(pin) || !verifyPassword(String(pin), account.pinHash)) {
-    const error = new Error("Apelido ou PIN invalidos.");
+  if (!account || !validateAccountPassword(cleanPassword) || !verifyPassword(cleanPassword, account.pinHash)) {
+    const error = new Error("Login ou senha invalidos.");
     error.statusCode = 401;
     throw error;
   }
