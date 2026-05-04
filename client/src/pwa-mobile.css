@@ -27,6 +27,79 @@ textarea {
   }
 }
 
+.pwa-install-card {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 1300;
+  display: grid;
+  width: min(440px, calc(100vw - 32px));
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 22px;
+  padding: 14px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(99,102,241,.30), rgba(236,72,153,.18)),
+    rgba(8, 12, 30, .92);
+  box-shadow: 0 22px 70px rgba(0,0,0,.38);
+  backdrop-filter: blur(18px);
+}
+
+.pwa-install-icon {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #6366f1, #ec4899);
+}
+
+.pwa-install-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pwa-install-copy strong {
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.pwa-install-copy small {
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pwa-install-action,
+.pwa-install-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+}
+
+.pwa-install-action {
+  gap: 7px;
+  min-height: 38px;
+  border-radius: 13px;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, #6366f1, #ec4899);
+  font-weight: 950;
+}
+
+.pwa-install-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.1);
+}
+
 @media (display-mode: standalone) {
   body {
     background: #070713;
@@ -55,5 +128,18 @@ textarea {
   .game-mode-card,
   .public-room-row {
     min-height: 48px;
+  }
+
+  .pwa-install-card {
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .pwa-install-action {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 }
