@@ -185,6 +185,29 @@ export default function AuthFirstEntry() {
     };
   }, [activeIdentity, handoffToApp, joinCode, playerId, socket]);
 
+  useEffect(() => {
+    if (!handoffToApp) return undefined;
+    if (window.location.pathname.startsWith("/admin") || getInviteRoomCode()) return undefined;
+
+    const returnToNewHomeIfLegacyEntryAppears = () => {
+      const savedRoom = readJsonStorage(ROOM_SESSION_KEY);
+      const legacyEntryVisible = Boolean(document.querySelector(".entry-grid"));
+
+      if (!savedRoom?.roomCode || legacyEntryVisible) {
+        setRoomSession(savedRoom?.roomCode ? savedRoom : null);
+        setHandoffToApp(false);
+      }
+    };
+
+    const interval = window.setInterval(returnToNewHomeIfLegacyEntryAppears, 250);
+    window.addEventListener("movizz:return-home", returnToNewHomeIfLegacyEntryAppears);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("movizz:return-home", returnToNewHomeIfLegacyEntryAppears);
+    };
+  }, [handoffToApp]);
+
   function selectMode(mode) {
     setSelectedMode(mode);
     setSettings({ ...(DEFAULT_SETTINGS_BY_MODE[mode] || DEFAULT_SETTINGS_BY_MODE.quiz) });
