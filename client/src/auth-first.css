@@ -18,11 +18,12 @@
 }
 
 .auth-first-card {
-  width: min(960px, 100%);
+  width: min(1060px, 100%);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-  gap: 22px;
-  align-items: stretch;
+  grid-template-columns: minmax(420px, 1.08fr) minmax(360px, .92fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px 22px;
+  align-items: start;
   border: 1px solid rgba(255,255,255,.11);
   border-radius: 34px;
   padding: 24px;
@@ -35,11 +36,12 @@
 }
 
 .auth-brand-block {
+  grid-row: 1 / span 2;
   display: grid;
   align-content: center;
   gap: 14px;
-  min-height: 520px;
-  padding: 28px;
+  min-height: 560px;
+  padding: 32px;
   border-radius: 28px;
   background: rgba(0,0,0,.18);
 }
@@ -65,7 +67,7 @@
 .auth-brand-block h1,
 .new-home-hero h1 {
   margin: 0;
-  font-size: clamp(44px, 8vw, 82px);
+  font-size: clamp(44px, 7vw, 82px);
   line-height: .9;
   letter-spacing: -.075em;
 }
@@ -113,8 +115,13 @@
 
 .auth-form {
   grid-column: 2;
+  grid-row: 2;
   align-content: start;
-  margin-top: 16px;
+  margin-top: 0;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 22px;
+  padding: 14px;
+  background: rgba(0,0,0,.16);
 }
 
 .auth-mode-tabs {
@@ -379,6 +386,17 @@
   text-align: left;
 }
 
+@media (min-width: 921px) {
+  .access-choice-grid {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .auth-first-page {
+    padding-top: max(18px, env(safe-area-inset-top));
+  }
+}
+
 @media (max-width: 920px) {
   .auth-first-card,
   .new-home-hero,
@@ -387,12 +405,18 @@
     grid-template-columns: 1fr;
   }
 
+  .auth-first-card {
+    grid-template-rows: auto;
+  }
+
   .auth-brand-block {
+    grid-row: auto;
     min-height: auto;
   }
 
   .auth-form {
     grid-column: 1;
+    grid-row: auto;
   }
 
   .game-mode-selector,
