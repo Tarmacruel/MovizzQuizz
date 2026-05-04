@@ -2,6 +2,16 @@
 
 Plataforma multiplayer de jogos de sala. O MovizzQuizz preserva o quiz de filmes, séries e cultura pop e adiciona os modos **Stop / Adedanha** e **Ludo**, com salas por código, tempo real e ranking.
 
+## Novidades das últimas 72h
+
+Atualizações mais recentes implementadas no projeto:
+
+- **Contas de jogador e reconexão robusta:** cada jogador pode vincular-se a uma conta para reencontrar partidas em andamento com mais confiabilidade, inclusive no Ludo e no Stop, mantendo continuidade após desconexões.
+- **Ludo com turnos automáticos por tempo:** o servidor agora processa timeout de turno automaticamente para evitar partidas travadas quando alguém demora para jogar.
+- **Jogada automática quando há apenas uma opção válida:** após rolar o dado, se existir apenas uma peça jogável, o movimento é executado automaticamente para acelerar a partida.
+- **Aprimoramentos de segurança e persistência:** reforços no backend para identificação de jogador, reconexão e consistência de sessão entre cliente/servidor.
+- **Cobertura de testes ampliada:** novos testes para reconexão de conta e para regras de turno/timeout do Ludo.
+
 ## Stack
 
 - **Frontend:** React + Vite + Socket.IO Client
@@ -334,25 +344,42 @@ O Vite está configurado com `allowedHosts` para `quizz.sirel.com.br` e proxy de
 MovizzQuizz/
 ├── client/
 │   ├── src/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── styles.css
+│   │   ├── App.jsx                # shell principal, lobby e fluxos de sala
+│   │   ├── LudoBoard.jsx          # renderização/interação do tabuleiro Ludo
+│   │   ├── ludoBoardGeometry.js   # geometria dos tabuleiros (4, 5 e 6 jogadores)
+│   │   ├── styles.css             # estilos globais da aplicação
+│   │   └── main.jsx               # bootstrap React
+│   ├── public/
+│   │   └── favicon.svg
 │   ├── .env.example
 │   ├── index.html
+│   ├── vite.config.js
 │   └── package.json
 ├── server/
-│   ├── data/questions.js
+│   ├── src/
+│   │   ├── index.js               # API HTTP + Socket.IO
+│   │   ├── db.js                  # cliente Prisma e acesso a banco
+│   │   ├── persistence.js         # leitura/escrita de salas e sessões
+│   │   ├── gameEngine.js          # engine do quiz
+│   │   ├── stopEngine.js          # engine do Stop / Adedanha
+│   │   ├── ludoEngine.js          # engine do Ludo
+│   │   ├── playerAccounts.js      # contas de jogador e reconexão
+│   │   ├── security.js            # validações de segurança e identidade
+│   │   └── appSettings.js         # configurações globais da aplicação
 │   ├── prisma/
 │   │   ├── schema.prisma
 │   │   └── seed.js
-│   ├── src/
-│   │   ├── db.js
-│   │   ├── gameEngine.js
-│   │   ├── index.js
-│   │   ├── persistence.js
-│   │   └── stopEngine.js
+│   ├── data/
+│   │   └── questions.js           # fallback local de perguntas
+│   ├── test/
+│   │   ├── ludoEngine.test.js
+│   │   └── accountReconnect.test.js
 │   ├── .env.example
 │   └── package.json
+├── iniciar.bat
+├── parar.bat
+├── resetar.bat
+├── atualizar.bat
 ├── .env.example
 ├── package.json
 └── README.md
