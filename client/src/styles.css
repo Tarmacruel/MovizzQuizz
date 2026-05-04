@@ -189,9 +189,13 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
   100% { left: var(--letter-target-x); top: var(--letter-target-y); opacity: 0; transform: translate(-50%, -50%) scale(var(--letter-target-scale)) rotateX(0deg) rotateY(720deg); }
 }
 .ludo-game-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 330px); gap: 22px; align-items: stretch; min-height: 76vh; }
-.ludo-board-panel { display: flex; min-height: 76vh; flex-direction: column; overflow: hidden; padding: 18px; background: linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.055)); }
+.ludo-board-panel { display: flex; min-height: 76vh; flex-direction: column; overflow: visible; padding: 18px; background: linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.055)); }
 .ludo-game-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
 .ludo-game-head h2 { margin: 10px 0 0; font-size: clamp(30px, 5vw, 54px); line-height: 1; }
+.ludo-title-stack { min-width: 0; }
+.ludo-turn-timer { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 8px 12px; background: rgba(15,23,42,.58); color: #dbeafe; font-size: 13px; font-weight: 900; box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+.ludo-turn-timer strong { color: #fff; font-size: 15px; }
+.ludo-turn-timer.danger { border-color: rgba(248,113,113,.48); background: rgba(127,29,29,.42); color: #fecaca; animation: timer-warn-pulse .9s ease-in-out infinite; }
 .ludo-dice { position: relative; isolation: isolate; display: grid; align-content: center; justify-items: center; gap: 4px; min-width: 112px; min-height: 112px; border-radius: 28px; color: #071018; overflow: visible; background: linear-gradient(135deg, #f8fafc, #a5b4fc 52%, #99f6e4); box-shadow: 0 12px 0 rgba(30,41,59,.72), 0 28px 68px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.7); transform-style: preserve-3d; perspective: 900px; transition: transform .18s ease, filter .18s ease, box-shadow .18s ease, opacity .18s ease; }
 .ludo-dice::before { content: ""; position: absolute; inset: -8px; z-index: -1; border-radius: 32px; background: radial-gradient(circle, color-mix(in srgb, var(--player-color) 42%, transparent), transparent 68%); opacity: .18; filter: blur(6px); transition: opacity .2s ease, transform .2s ease; }
 .ludo-dice small { position: relative; z-index: 2; font-size: 12px; font-weight: 950; }
@@ -199,7 +203,7 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
 .ludo-dice:hover:not(:disabled) { transform: translateY(-4px) rotateX(6deg); filter: brightness(1.06); }
 .ludo-dice:active:not(:disabled) { transform: translateY(3px) scale(.97); box-shadow: 0 5px 0 rgba(30,41,59,.75), 0 16px 38px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.5); }
 .ludo-dice:disabled { opacity: .82; }
-.dice-stage { position: relative; z-index: 2; display: block; width: 62px; height: 62px; perspective: 900px; transform-style: preserve-3d; }
+.dice-stage { position: relative; z-index: 2; display: block; width: 62px; height: 62px; perspective: 900px; transform-style: preserve-3d; transform: rotateX(-10deg) rotateY(14deg); }
 .dice-cube { --dice-size: 56px; --dice-z: 28px; position: absolute; inset: 3px; width: var(--dice-size); height: var(--dice-size); transform-style: preserve-3d; transform: var(--dice-rotation); transition: transform .36s cubic-bezier(.16,.9,.18,1); }
 .dice-cube-face { position: absolute; inset: 0; display: grid; place-items: center; width: var(--dice-size); height: var(--dice-size); border: 1px solid rgba(255,255,255,.72); border-radius: 16px; background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(214,226,245,.94)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.62), inset 0 -10px 18px rgba(15,23,42,.14), 0 10px 20px rgba(15,23,42,.24); backface-visibility: visible; }
 .dice-cube-face::after { content: ""; position: absolute; inset: 6px 8px auto 8px; height: 18px; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.66), rgba(255,255,255,0)); pointer-events: none; }
@@ -209,6 +213,8 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
 .dice-cube-face.face-4 { transform: rotateY(-90deg) translateZ(var(--dice-z)); }
 .dice-cube-face.face-5 { transform: rotateX(90deg) translateZ(var(--dice-z)); }
 .dice-cube-face.face-6 { transform: rotateX(-90deg) translateZ(var(--dice-z)); }
+.dice-cube-face.face-2, .dice-cube-face.face-4 { background: linear-gradient(145deg, rgba(229,237,250,.98), rgba(188,204,226,.94)); }
+.dice-cube-face.face-5, .dice-cube-face.face-6 { background: linear-gradient(145deg, rgba(248,250,252,.98), rgba(202,213,232,.94)); }
 .die-pip-grid { display: grid; width: 38px; height: 38px; grid-template-columns: repeat(3, 1fr); gap: 4px; align-items: center; justify-items: center; }
 .die-pip-grid i { width: 8px; height: 8px; border-radius: 999px; background: transparent; box-shadow: none; }
 .die-pip-grid i.active { background: linear-gradient(145deg, #334155, #020617); box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 1px 2px rgba(0,0,0,.3); }
@@ -221,26 +227,28 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
 .dice-particles i { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; border-radius: 999px; background: var(--player-color); box-shadow: 0 0 12px var(--player-color); animation: dice-particle .82s ease-out forwards; transform: rotate(var(--particle-angle)) translateX(0) scale(1); }
 .ludo-board { display: block; width: min(100%, 82vh); max-width: 860px; height: auto; aspect-ratio: 1; margin: 0 auto; border-radius: 30px; background: radial-gradient(circle at 50% 46%, rgba(255,255,255,.13), rgba(15,23,42,.8) 48%, rgba(2,6,23,.96)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), inset 0 26px 70px rgba(255,255,255,.035), 0 32px 90px rgba(0,0,0,.42); transform: perspective(1200px) rotateX(5deg); transform-origin: center bottom; }
 .ludo-board.classic { transform: none; background: radial-gradient(circle at 50% 50%, rgba(15,23,42,.88), rgba(2,6,23,.98) 62%); shape-rendering: geometricPrecision; }
+.ludo-board.six-players { transform: none; background: radial-gradient(circle at 50% 48%, rgba(255,255,255,.2), rgba(15,23,42,.66) 58%, rgba(2,6,23,.95)); shape-rendering: geometricPrecision; }
 .ludo-board-plate { fill: rgba(15,23,42,.94); stroke: rgba(255,255,255,.14); stroke-width: 3; }
 .ludo-board.classic .ludo-board-plate { fill: #0b1220; stroke: rgba(148,163,184,.34); stroke-width: 2; }
-.ludo-board.six-players .ludo-board-plate { fill: #f8fafc; stroke: #111827; stroke-width: 4; }
+.ludo-board.six-players .ludo-board-plate { fill: #eef2f7; stroke: #111827; stroke-width: 4; }
 .ludo-classic-field, .ludo-radial-field { fill: rgba(2,6,23,.42); stroke: rgba(255,255,255,.08); stroke-width: 2; }
 .ludo-board.classic .ludo-classic-field { fill: #090f1d; stroke: rgba(148,163,184,.28); stroke-width: 2; }
-.ludo-board.six-players .ludo-radial-field { fill: #f8fafc; stroke: #111827; stroke-width: 2.5; }
+.ludo-board.six-players .ludo-radial-field { fill: #f8fafc; stroke: #111827; stroke-width: 2.4; }
 .ludo-slice { fill: color-mix(in srgb, var(--player-color) 58%, rgba(15,23,42,.92)); stroke: rgba(255,255,255,.22); stroke-width: 2.2; opacity: .9; filter: drop-shadow(0 12px 18px rgba(0,0,0,.22)); }
 .ludo-slice.empty { opacity: .28; }
-.ludo-board.six-players .ludo-slice { fill: color-mix(in srgb, var(--player-color) 32%, #f8fafc); stroke: rgba(17,24,39,.72); stroke-width: 2.2; opacity: 1; filter: none; }
+.ludo-board.six-players .ludo-slice { fill: color-mix(in srgb, var(--player-color) 24%, #f8fafc); stroke: rgba(17,24,39,.5); stroke-width: 1.8; opacity: 1; filter: none; }
 .ludo-board.six-players .ludo-slice.empty { fill: #e5e7eb; opacity: .72; }
-.ludo-track-ring { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 38; }
-.ludo-board.six-players .ludo-track-ring { stroke: #f8fafc; stroke-width: 42; }
+.ludo-track-ring { fill: none; stroke: rgba(255,255,255,.12); stroke-width: 38; stroke-linejoin: round; }
+.ludo-board.six-players .ludo-track-ring { fill: none; stroke: #fff; stroke-width: 50; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 3px 0 rgba(17,24,39,.4)); }
 .ludo-center-hex { fill: #f8fafc; stroke: #111827; stroke-width: 2.2; filter: drop-shadow(0 8px 14px rgba(0,0,0,.24)); }
 .ludo-center-wedge { fill: color-mix(in srgb, var(--player-color) 68%, rgba(15,23,42,.72)); stroke: rgba(255,255,255,.18); stroke-width: 1.5; }
 .ludo-board.classic .ludo-center-wedge { fill: color-mix(in srgb, var(--player-color) 88%, #0f172a); stroke: rgba(255,255,255,.6); stroke-width: 1.7; filter: drop-shadow(0 4px 10px rgba(0,0,0,.18)); }
-.ludo-board.six-players .ludo-center-wedge { fill: color-mix(in srgb, var(--player-color) 78%, #f8fafc); stroke: rgba(17,24,39,.75); stroke-width: 1.4; }
+.ludo-board.six-players .ludo-center-wedge { fill: color-mix(in srgb, var(--player-color) 82%, #f8fafc); stroke: rgba(17,24,39,.72); stroke-width: 1.3; }
 .ludo-center { fill: rgba(15,23,42,.9); stroke: rgba(255,255,255,.28); stroke-width: 2; filter: drop-shadow(0 16px 26px rgba(0,0,0,.3)); }
 .ludo-board.classic .ludo-center { fill: #111827; stroke: rgba(255,255,255,.72); stroke-width: 2; filter: drop-shadow(0 9px 16px rgba(0,0,0,.38)); }
-.ludo-board.six-players .ludo-center { fill: #111827; stroke: #f8fafc; stroke-width: 2.2; }
+.ludo-board.six-players .ludo-center { fill: #111827; stroke: #f8fafc; stroke-width: 2.1; filter: drop-shadow(0 7px 10px rgba(0,0,0,.32)); }
 .ludo-center-label { fill: rgba(255,255,255,.86); font-size: 18px; font-weight: 950; pointer-events: none; letter-spacing: 0; }
+.ludo-board.six-players .ludo-center-label { font-size: 14px; }
 .ludo-cell { fill: rgba(248,250,252,.9); stroke: rgba(15,23,42,.52); stroke-width: 1.25; filter: drop-shadow(0 3px 4px rgba(0,0,0,.28)); }
 .ludo-board.classic .ludo-cell { fill: #f8fafc; stroke: #111827; stroke-width: 1.35; filter: drop-shadow(0 2px 0 rgba(0,0,0,.34)); shape-rendering: geometricPrecision; }
 .ludo-board.classic .ludo-cell.alt { fill: #e9edf5; }
@@ -250,34 +258,38 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
 .ludo-cell.safe.start { fill: color-mix(in srgb, var(--player-color) 78%, #fff); stroke: rgba(255,255,255,.86); }
 .ludo-board.classic .ludo-cell.safe:not(.start) { fill: #fff7d6; stroke: #92400e; stroke-width: 1.85; }
 .ludo-safe-star { fill: #facc15; stroke: #7c2d12; stroke-width: 1.05; filter: drop-shadow(0 1px 1px rgba(0,0,0,.46)); pointer-events: none; }
+.ludo-safe-star.mini { fill: rgba(120,53,15,.92); stroke: rgba(255,255,255,.7); stroke-width: .65; filter: none; }
 .ludo-cell.legal-target { stroke: #111827; stroke-width: 2.8; filter: drop-shadow(0 0 10px rgba(250,204,21,.72)); }
-.ludo-board.six-players .ludo-cell { fill: #fff; stroke: #111827; stroke-width: 1.35; filter: none; }
-.ludo-board.six-players .ludo-cell.start { fill: color-mix(in srgb, var(--player-color) 72%, #fff); stroke: #111827; }
-.ludo-board.six-players .ludo-cell.safe { fill: #fde047; stroke: #111827; }
+.ludo-board.six-players .ludo-cell { fill: #fff; stroke: #111827; stroke-width: 1.25; filter: drop-shadow(0 1px 0 rgba(17,24,39,.38)); }
+.ludo-board.six-players .ludo-cell.start { fill: color-mix(in srgb, var(--player-color) 76%, #fff); stroke: #111827; stroke-width: 1.55; }
+.ludo-board.six-players .ludo-cell.safe { fill: #fde68a; stroke: #111827; }
+.ludo-board.six-players .ludo-cell.legal-target { stroke: #020617; stroke-width: 2.5; filter: drop-shadow(0 0 8px rgba(250,204,21,.8)); }
 .ludo-home-panel, .ludo-home-pocket { fill: color-mix(in srgb, var(--player-color) 62%, rgba(2,6,23,.88)); stroke: rgba(255,255,255,.28); stroke-width: 2; filter: drop-shadow(0 14px 24px rgba(0,0,0,.3)); }
 .ludo-home-panel { stroke-width: 2.4; }
 .ludo-board.classic .ludo-home-panel { fill: color-mix(in srgb, var(--player-color) 86%, #111827); stroke: color-mix(in srgb, var(--player-color) 36%, #fff); stroke-width: 2.8; filter: drop-shadow(0 12px 16px rgba(0,0,0,.42)) drop-shadow(0 0 14px color-mix(in srgb, var(--player-color) 36%, transparent)); }
-.ludo-board.six-players .ludo-home-pocket { fill: color-mix(in srgb, var(--player-color) 86%, #f8fafc); stroke: #111827; stroke-width: 2.4; filter: none; }
+.ludo-board.six-players .ludo-home-pocket { fill: color-mix(in srgb, var(--player-color) 32%, #f8fafc); stroke: #111827; stroke-width: 2.2; filter: drop-shadow(0 4px 0 rgba(17,24,39,.2)); }
 .ludo-lane-bed { stroke: rgba(248,250,252,.82); stroke-width: 46; stroke-linecap: round; opacity: .58; }
 .ludo-home-lane-group.classic .ludo-lane-bed { stroke-width: 34; stroke-linecap: butt; opacity: .34; }
-.ludo-board.six-players .ludo-lane-bed { stroke: #fff; stroke-width: 50; stroke-linecap: butt; opacity: 1; }
+.ludo-board.six-players .ludo-lane-bed { stroke: #fff; stroke-width: 30; stroke-linecap: round; opacity: 1; filter: drop-shadow(0 2px 0 rgba(17,24,39,.34)); }
 .ludo-home-lane { stroke: color-mix(in srgb, var(--player-color) 64%, rgba(15,23,42,.6)); stroke-width: 19; stroke-linecap: round; opacity: .72; filter: drop-shadow(0 5px 8px rgba(0,0,0,.24)); }
 .ludo-home-lane-group.classic .ludo-home-lane { stroke-width: 20; stroke-linecap: butt; opacity: .62; }
-.ludo-board.six-players .ludo-home-lane { stroke: var(--player-color); stroke-width: 18; stroke-linecap: butt; opacity: 1; filter: none; }
+.ludo-board.six-players .ludo-home-lane { stroke: color-mix(in srgb, var(--player-color) 66%, #fff); stroke-width: 18; stroke-linecap: round; opacity: 1; filter: none; }
 .ludo-lane-dot { fill: color-mix(in srgb, var(--player-color) 72%, #f8fafc); stroke: rgba(255,255,255,.72); stroke-width: 2; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
 .ludo-home-lane-group.classic .ludo-lane-dot { fill: color-mix(in srgb, var(--player-color) 86%, #fff); stroke: rgba(255,255,255,.95); stroke-width: 1.75; filter: drop-shadow(0 2px 0 rgba(0,0,0,.34)); shape-rendering: geometricPrecision; }
-.ludo-board.six-players .ludo-lane-dot { fill: color-mix(in srgb, var(--player-color) 84%, #fff); stroke: #111827; stroke-width: 1.25; filter: none; }
+.ludo-board.six-players .ludo-lane-dot { fill: color-mix(in srgb, var(--player-color) 84%, #fff); stroke: #111827; stroke-width: 1.25; filter: drop-shadow(0 1px 0 rgba(17,24,39,.34)); }
 .ludo-base { fill: color-mix(in srgb, var(--player-color) 76%, #020617); stroke: rgba(255,255,255,.6); stroke-width: 2; filter: drop-shadow(0 14px 24px rgba(0,0,0,.38)); }
 .ludo-home-slot { fill: rgba(255,255,255,.18); stroke: rgba(255,255,255,.45); stroke-width: 1.5; }
 .ludo-board.classic .ludo-base { fill: rgba(15,23,42,.16); stroke: rgba(255,255,255,.62); stroke-width: 2.2; filter: drop-shadow(0 8px 10px rgba(0,0,0,.28)); }
 .ludo-board.classic .ludo-home-slot { fill: rgba(15,23,42,.36); stroke: color-mix(in srgb, var(--player-color) 36%, #fff); stroke-width: 2; filter: drop-shadow(0 4px 4px rgba(0,0,0,.35)); }
 .ludo-home.empty { opacity: .36; }
 .ludo-home.active .ludo-base, .ludo-home.active .ludo-home-panel, .ludo-home.active .ludo-home-pocket { filter: drop-shadow(0 0 16px color-mix(in srgb, var(--player-color) 64%, transparent)); }
-.ludo-board.six-players .ludo-base { fill: var(--player-color); stroke: #111827; stroke-width: 2.4; filter: drop-shadow(0 10px 12px rgba(0,0,0,.24)); }
-.ludo-board.six-players .ludo-home-slot { fill: #fff; stroke: #111827; stroke-width: 1.5; }
+.ludo-board.six-players .ludo-base { fill: color-mix(in srgb, var(--player-color) 84%, #fff); stroke: #111827; stroke-width: 2.1; filter: drop-shadow(0 7px 8px rgba(0,0,0,.24)); }
+.ludo-board.six-players .ludo-home-slot { fill: #fff; stroke: #111827; stroke-width: 1.35; filter: drop-shadow(0 1px 0 rgba(17,24,39,.25)); }
 .ludo-board.six-players .ludo-home.empty { opacity: .42; }
 .ludo-base-label { fill: #fff; font-size: 18px; font-weight: 950; pointer-events: none; }
 .ludo-base-score { fill: rgba(255,255,255,.76); font-size: 13px; font-weight: 900; pointer-events: none; }
+.ludo-board.six-players .ludo-base-label { font-size: 11px; paint-order: stroke; stroke: rgba(17,24,39,.82); stroke-width: 2.4px; }
+.ludo-board.six-players .ludo-base-score { fill: #fff; font-size: 11px; paint-order: stroke; stroke: rgba(17,24,39,.82); stroke-width: 2.2px; }
 .ludo-piece { cursor: default; transform-box: fill-box; transform-origin: center; transition: transform .62s cubic-bezier(.16,.9,.18,1); }
 .ludo-piece-body, .ludo-piece-ring, .ludo-piece-burst { transform-box: fill-box; transform-origin: center; }
 .ludo-piece-ground { fill: rgba(0,0,0,.36); stroke: none; filter: blur(1px); opacity: .78; pointer-events: none; }
@@ -307,10 +319,11 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
 .ludo-say-form { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; }
 .ludo-say-form input { margin: 0; }
 .ludo-final { max-width: 760px; }
-@keyframes dice-stage-bounce { 0% { transform: translateY(0) scale(.92); } 28% { transform: translateY(-18px) scale(1.08); } 55% { transform: translateY(3px) scale(.97); } 78% { transform: translateY(-7px) scale(1.02); } 100% { transform: translateY(0) scale(1); } }
+@keyframes dice-stage-bounce { 0% { transform: rotateX(-10deg) rotateY(14deg) translateY(0) scale(.92); } 28% { transform: rotateX(-18deg) rotateY(24deg) translateY(-18px) scale(1.08); } 55% { transform: rotateX(-9deg) rotateY(10deg) translateY(3px) scale(.97); } 78% { transform: rotateX(-14deg) rotateY(18deg) translateY(-7px) scale(1.02); } 100% { transform: rotateX(-10deg) rotateY(14deg) translateY(0) scale(1); } }
 @keyframes dice-cube-roll { 0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); filter: blur(1.2px); } 28% { transform: rotateX(220deg) rotateY(160deg) rotateZ(38deg); filter: blur(0); } 58% { transform: rotateX(470deg) rotateY(330deg) rotateZ(82deg); } 100% { transform: rotateX(720deg) rotateY(540deg) rotateZ(136deg); } }
 @keyframes dice-result-pop { 0% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(.35) rotate(-24deg); } 55% { opacity: 1; transform: translateX(-50%) translateY(-8px) scale(1.16) rotate(8deg); } 100% { opacity: 0; transform: translateX(-50%) translateY(-28px) scale(1) rotate(0deg); } }
 @keyframes dice-particle { 0% { opacity: 1; transform: rotate(var(--particle-angle)) translateX(0) scale(1); } 100% { opacity: 0; transform: rotate(var(--particle-angle)) translateX(58px) scale(.15); } }
+@keyframes timer-warn-pulse { 0%, 100% { transform: translateY(0); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 rgba(248,113,113,0); } 50% { transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 22px rgba(248,113,113,.22); } }
 @keyframes piece-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .76; } }
 @keyframes piece-body-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 @keyframes piece-hop { 0% { transform: translateY(0) scale(1); } 45% { transform: translateY(-12px) scale(1.09); } 100% { transform: translateY(0) scale(1); } }
@@ -350,6 +363,8 @@ input:focus, select:focus { border-color: rgba(129, 140, 248, .8); box-shadow: 0
   .ludo-game-head { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; gap: 10px; margin-bottom: 8px; }
   .ludo-game-head > div { min-width: 0; }
   .ludo-game-head h2 { font-size: clamp(24px, 7vw, 32px); }
+  .ludo-turn-timer { margin-top: 8px; padding: 7px 10px; font-size: 12px; }
+  .ludo-turn-timer strong { font-size: 14px; }
   .ludo-dice { min-width: 82px; min-height: 82px; border-radius: 22px; }
   .dice-stage { width: 48px; height: 48px; }
   .dice-cube { --dice-size: 42px; --dice-z: 21px; inset: 3px; }

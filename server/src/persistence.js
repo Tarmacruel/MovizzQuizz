@@ -48,6 +48,9 @@ function serializeDeck(room) {
     return {
       pieces: room.pieces || [],
       currentTurnPlayerId: room.currentTurnPlayerId || null,
+      turnPhase: room.turnPhase || null,
+      turnDeadlineAt: room.turnDeadlineAt || null,
+      turnDurationMs: room.turnDurationMs || null,
       dice: room.dice || null,
       legalMoves: room.legalMoves || [],
       lastAction: room.lastAction || null,

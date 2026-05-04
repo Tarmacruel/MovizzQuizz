@@ -1,6 +1,7 @@
 import {
   LUDO_CENTER,
   LUDO_COLORS,
+  SIX_LUDO_GEOMETRY,
   getClassicBaseRect,
   getClassicLaneRect,
   getClassicTrackRect,
@@ -8,15 +9,18 @@ import {
   getCenterTrianglePath,
   getHexagonPoints,
   getHomeSlotPoints,
-  getLanePoint,
-  getLudoAngleForCell,
   getLudoBoardConfig,
   getLudoBoardSlots,
   getLudoBoardVariant,
   getLudoPiecePoint,
   getLudoTrackPoint,
+  getSixBaseArea,
+  getSixBaseSlotPoints,
+  getSixFinalLaneGuide,
+  getSixFinalLaneRect,
   getSixHomePocketPath,
   getSixSlicePath,
+  getSixTrackRect,
   getSlotStartCell,
 } from "./ludoBoardGeometry";
 
@@ -94,32 +98,39 @@ function renderTrackCells({ variant, slots, safeCells, legalTargets, trackSize }
       </g>;
     }
 
-    return <rect
-      key={cell}
-      x="-8.5"
-      y="-8.5"
-      width="17"
-      height="17"
-      rx="4.5"
-      className={className}
-      style={style}
-      transform={`translate(${point.x} ${point.y}) rotate(${getLudoAngleForCell(cell) + 90})`}
-      aria-label={`Casa ${cell + 1}`}
-    />;
+    const rect = getSixTrackRect(cell);
+    return <g key={cell} className="ludo-cell-wrap">
+      <rect
+        x={rect.x}
+        y={rect.y}
+        width={rect.width}
+        height={rect.height}
+        rx={rect.rx}
+        className={className}
+        style={style}
+        transform={rect.transform}
+        aria-label={`Casa ${cell + 1}${isSafe ? " segura" : ""}`}
+      />
+      {isSafe && !startSlot && <polygon
+        points={getStarPoints(point.x, point.y, 5.6, 2.4)}
+        className="ludo-safe-star mini"
+        aria-hidden="true"
+      />}
+    </g>;
   });
 }
 
 function renderCenter(slots, variant) {
   return <g className={cx("ludo-center-mark", variant)}>
-    {variant === "sixPlayers" && <polygon points={getHexagonPoints(84)} className="ludo-center-hex" />}
+    {variant === "sixPlayers" && <polygon points={getHexagonPoints(SIX_LUDO_GEOMETRY.CENTER_WEDGE_RADIUS + 5)} className="ludo-center-hex" />}
     {slots.map((slot) => <path
       key={slot.color}
       d={getCenterTrianglePath(slot, variant)}
       className="ludo-center-wedge"
       style={{ "--player-color": slot.colorHex }}
     />)}
-    <circle cx={LUDO_CENTER.x} cy={LUDO_CENTER.y} r={variant === "classic" ? 39 : 43} className="ludo-center" />
-    <text x={LUDO_CENTER.x} y={LUDO_CENTER.y + 7} textAnchor="middle" className="ludo-center-label">LUDO</text>
+    <circle cx={LUDO_CENTER.x} cy={LUDO_CENTER.y} r={variant === "classic" ? 39 : SIX_LUDO_GEOMETRY.CENTER_RADIUS} className="ludo-center" />
+    <text x={LUDO_CENTER.x} y={LUDO_CENTER.y + (variant === "classic" ? 7 : 5)} textAnchor="middle" className="ludo-center-label">LUDO</text>
   </g>;
 }
 
@@ -157,22 +168,26 @@ function renderSixHomes({ players, slots, bubbles, reactions, pieces, currentTur
     const boardSlot = player || slot;
     const color = getSlotColor(slot, player);
     const base = getBaseCenter(boardSlot, "sixPlayers");
+    const area = getSixBaseArea(boardSlot);
     const finished = player ? pieces.filter((piece) => piece.playerId === player.id && piece.state === "finished").length : 0;
     const bubble = player ? bubbles.find((item) => item.playerId === player.id) : null;
     const reaction = player ? getLatestForPlayer(reactions, player.id) : null;
 
     return <g key={player?.id || slot.color} className={cx("ludo-home six", !player && "empty", player?.id === currentTurnPlayerId && "active")} style={{ "--player-color": color }}>
       <path d={getSixHomePocketPath(boardSlot)} className="ludo-home-pocket" />
-      <circle cx={base.x} cy={base.y} r="43" className="ludo-base" />
-      {getHomeSlotPoints(base, [
-        { x: -16, y: -16 },
-        { x: 16, y: -16 },
-        { x: -16, y: 16 },
-        { x: 16, y: 16 },
-      ]).map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="10" className="ludo-home-slot" />)}
+      <rect
+        x={area.center.x - area.width / 2}
+        y={area.center.y - area.height / 2}
+        width={area.width}
+        height={area.height}
+        rx={area.rx}
+        className="ludo-base"
+        transform={area.transform}
+      />
+      {getSixBaseSlotPoints(boardSlot).map((point, index) => <circle key={index} cx={point.x} cy={point.y} r={SIX_LUDO_GEOMETRY.HOME_SLOT_RADIUS} className="ludo-home-slot" />)}
       {player && <>
-        <text x={base.x} y={base.y + 5} textAnchor="middle" className="ludo-base-label">{player.name.slice(0, 2).toUpperCase()}</text>
-        <text x={base.x} y={base.y + 55} textAnchor="middle" className="ludo-base-score">{finished}/4</text>
+        <text x={area.labelPoint.x} y={area.labelPoint.y + 4} textAnchor="middle" className="ludo-base-label">{player.name.slice(0, 2).toUpperCase()}</text>
+        <text x={area.scorePoint.x} y={area.scorePoint.y + 4} textAnchor="middle" className="ludo-base-score">{finished}/4</text>
       </>}
       {reaction && <text x={base.x + 36} y={base.y - 40} textAnchor="middle" className="ludo-reaction">{reaction.emoji}</text>}
       {bubble && <g className="ludo-speech">
@@ -202,26 +217,21 @@ function renderHomeLanes(slots, variant) {
       </g>;
     }
 
-    const start = variant === "classic"
-      ? getLanePoint(slot, variant, 0)
-      : getLudoTrackPoint(getSlotStartCell(slot, variant), variant);
-    const end = variant === "classic" ? getLanePoint(slot, variant, 5) : LUDO_CENTER;
+    const guide = getSixFinalLaneGuide(slot);
     return <g key={slot.color} className={cx("ludo-home-lane-group", variant)} style={{ "--player-color": slot.colorHex }}>
-      <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} className="ludo-lane-bed" />
-      <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} className="ludo-home-lane" />
+      <line x1={guide.start.x} y1={guide.start.y} x2={guide.end.x} y2={guide.end.y} className="ludo-lane-bed" />
+      <line x1={guide.start.x} y1={guide.start.y} x2={guide.end.x} y2={guide.end.y} className="ludo-home-lane" />
       {Array.from({ length: 6 }, (_, index) => {
-        const point = getLanePoint(slot, variant, index);
-        const angle = variant === "classic" ? 0 : getLudoAngleForCell(getSlotStartCell(slot, variant)) + 45;
-        const size = variant === "classic" ? 21 : 18;
+        const rect = getSixFinalLaneRect(slot, index);
         return <rect
           key={index}
-          x={-size / 2}
-          y={-size / 2}
-          width={size}
-          height={size}
-          rx={variant === "classic" ? 4 : 5}
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
+          rx={rect.rx}
           className="ludo-lane-dot"
-          transform={`translate(${point.x} ${point.y}) rotate(${angle})`}
+          transform={rect.transform}
         />;
       })}
     </g>;
@@ -238,7 +248,9 @@ function renderPieces({ pieces, players, legalPieceIds, variant, movePiece, last
     const captured = (lastAction?.capturedPieceIds || []).includes(piece.id);
     const pieceRadius = variant === "classic"
       ? legal ? 15.5 : 13.2
-      : legal ? 17 : 14.5;
+      : piece.state === "home"
+      ? legal ? 10.4 : 8.8
+      : legal ? 12.2 : 10.5;
 
     return <g
       key={piece.id}
@@ -288,18 +300,25 @@ function SixPlayerLudoBoard(props) {
 
   return <svg className="ludo-board six-players" viewBox="0 0 600 600" role="img" aria-label="Tabuleiro Ludo 6 jogadores">
     {renderDefs()}
-    <polygon points={getHexagonPoints(292)} className="ludo-board-plate" filter="url(#boardLift)" />
-    <circle cx="300" cy="300" r="248" className="ludo-radial-field" />
-    <g className="ludo-pizza">
-      {slots.map((slot) => {
-        const player = getSlotPlayer(players, slot);
-        const color = getSlotColor(slot, player);
-        return <path key={slot.color} d={getSixSlicePath(slot)} className={cx("ludo-slice", !player && "empty")} style={{ "--player-color": color }} />;
-      })}
+    <defs>
+      <clipPath id="sixBoardClip">
+        <polygon points={getHexagonPoints(SIX_LUDO_GEOMETRY.SECTOR_OUTER_RADIUS)} />
+      </clipPath>
+    </defs>
+    <polygon points={getHexagonPoints(SIX_LUDO_GEOMETRY.OUTER_RADIUS)} className="ludo-board-plate" filter="url(#boardLift)" />
+    <g clipPath="url(#sixBoardClip)">
+      <polygon points={getHexagonPoints(SIX_LUDO_GEOMETRY.SECTOR_OUTER_RADIUS)} className="ludo-radial-field" />
+      <g className="ludo-pizza">
+        {slots.map((slot) => {
+          const player = getSlotPlayer(players, slot);
+          const color = getSlotColor(slot, player);
+          return <path key={slot.color} d={getSixSlicePath(slot)} className={cx("ludo-slice", !player && "empty")} style={{ "--player-color": color }} />;
+        })}
+      </g>
     </g>
-    <circle cx="300" cy="300" r="202" className="ludo-track-ring" />
-    {renderTrackCells({ variant: "sixPlayers", slots, safeCells, legalTargets, trackSize })}
     {renderHomeLanes(slots, "sixPlayers")}
+    <polygon points={getHexagonPoints(SIX_LUDO_GEOMETRY.TRACK_RADIUS)} className="ludo-track-ring" />
+    {renderTrackCells({ variant: "sixPlayers", slots, safeCells, legalTargets, trackSize })}
     {renderSixHomes({ players, slots, bubbles, reactions, pieces, currentTurnPlayerId })}
     {renderCenter(slots, "sixPlayers")}
     {renderPieces({ pieces, players, legalPieceIds, variant: "sixPlayers", movePiece, lastAction: props.lastAction })}

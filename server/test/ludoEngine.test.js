@@ -5,6 +5,7 @@ import {
   createLudoRoom,
   getPublicLudoRoom,
   moveLudoPiece,
+  processLudoTurnTimeout,
   rollLudoDice,
   startLudoGame,
   syncLudoPlayers,
@@ -78,6 +79,7 @@ test("usa variante classica quando lobby esta configurado para ate 4 jogadores",
   assert.deepEqual(room.players.map((player) => player.startCell), [0, 13]);
   assert.equal(publicRoom.board.trackSize, 52);
   assert.equal(publicRoom.board.finishProgress, 57);
+  assert.equal(publicRoom.board.homeEntryProgress, 51);
   assert.deepEqual(publicRoom.board.startCells, [0, 13, 26, 39]);
 });
 
@@ -89,7 +91,74 @@ test("usa variante radial quando lobby esta configurado para 5 ou 6 jogadores", 
   assert.deepEqual(room.players.map((player) => player.startCell), [0, 12]);
   assert.equal(publicRoom.board.trackSize, 72);
   assert.equal(publicRoom.board.finishProgress, 77);
+  assert.equal(publicRoom.board.homeEntryProgress, 71);
   assert.deepEqual(publicRoom.board.startCells, [0, 12, 24, 36, 48, 60]);
+});
+
+test("timer inicia em roll ao comecar partida", () => {
+  const room = makeRoom(2);
+  startLudoGame(room, { now: 1000 });
+  const publicRoom = getPublicLudoRoom(room);
+  assert.equal(room.turnPhase, "roll");
+  assert.equal(room.turnDeadlineAt, 1000 + LUDO_TEST_CONSTANTS.LUDO_TURN_DURATION_MS);
+  assert.equal(publicRoom.turnPhase, "roll");
+  assert.equal(publicRoom.turnDeadlineAt, room.turnDeadlineAt);
+  assert.equal(publicRoom.turnDurationMs, LUDO_TEST_CONSTANTS.LUDO_TURN_DURATION_MS);
+});
+
+test("rolagem manual com multiplas pecas arma fase de movimento", () => {
+  const room = makeRoom(2);
+  startLudoGame(room, { now: 1000 });
+  const result = rollLudoDice(room, { socketId: "p1", diceValue: 6, now: 2000 });
+  assert.equal(result.legalMoves.length, 4);
+  assert.equal(result.autoMove, undefined);
+  assert.equal(room.turnPhase, "move");
+  assert.equal(room.turnDeadlineAt, 2000 + LUDO_TEST_CONSTANTS.LUDO_TURN_DURATION_MS);
+});
+
+test("timeout em roll rola o dado automaticamente", () => {
+  const room = makeRoom(2);
+  startLudoGame(room, { now: 1000 });
+  const result = processLudoTurnTimeout(room, { now: 31001, diceValue: 5 });
+  assert.equal(result.type, "roll");
+  assert.equal(room.lastAction.type, "roll");
+  assert.equal(room.lastAction.automatic, true);
+  assert.equal(room.lastAction.timeout, true);
+  assert.equal(room.lastAction.value, 5);
+  assert.equal(room.currentTurnPlayerId, "p2");
+  assert.equal(room.turnPhase, "roll");
+});
+
+test("timeout em move escolhe melhor jogada para finalizar", () => {
+  const room = makeRoom(2);
+  startLudoGame(room, { now: 1000 });
+  const config = LUDO_TEST_CONSTANTS.getLudoBoardConfig(room.boardVariant);
+  setPiece(room, "p1", 0, config.finishProgress - 1);
+  setPiece(room, "p1", 1, 4);
+  rollLudoDice(room, { socketId: "p1", diceValue: 1, now: 2000 });
+  assert.equal(room.legalMoves.length, 2);
+  const result = processLudoTurnTimeout(room, { now: 32001 });
+  assert.equal(result.type, "move");
+  assert.equal(piece(room, "p1", 0).state, "finished");
+  assert.equal(room.lastAction.type, "finish-piece");
+  assert.equal(room.lastAction.automatic, true);
+  assert.equal(room.lastAction.timeout, true);
+});
+
+test("timeout em move prioriza captura antes de avanco simples", () => {
+  const room = makeRoom(2);
+  startLudoGame(room, { now: 1000 });
+  setPiece(room, "p1", 0, 1);
+  setPiece(room, "p1", 1, 6);
+  setPiece(room, "p2", 0, progressToAbsoluteCell(room, "p2", 4));
+  rollLudoDice(room, { socketId: "p1", diceValue: 3, now: 2000 });
+  assert.equal(room.legalMoves.length, 2);
+  const result = processLudoTurnTimeout(room, { now: 32001 });
+  assert.equal(result.type, "move");
+  assert.equal(piece(room, "p1", 0).progress, 4);
+  assert.equal(piece(room, "p2", 0).state, "home");
+  assert.equal(room.lastAction.type, "capture");
+  assert.equal(room.currentTurnPlayerId, "p1");
 });
 
 test("so entra na pista com 6", () => {
@@ -98,6 +167,9 @@ test("so entra na pista com 6", () => {
   const result = rollLudoDice(room, { socketId: "p1", diceValue: 5 });
   assert.equal(result.legalMoves.length, 0);
   assert.equal(piece(room, "p1").state, "home");
+  assert.equal(room.lastAction.type, "roll");
+  assert.equal(room.lastAction.value, 5);
+  assert.equal(room.dice.rolled, false);
   assert.equal(room.currentTurnPlayerId, "p2");
 });
 
@@ -162,6 +234,9 @@ test("movimenta automaticamente quando so ha uma peca possivel", () => {
   setPiece(room, "p1", 0, 2);
   const result = rollLudoDice(room, { socketId: "p1", diceValue: 3 });
   assert.equal(result.autoMove.pieceId, piece(room, "p1", 0).id);
+  assert.equal(Boolean(result.autoMove.actionToken), true);
+  assert.equal(room.turnPhase, "move");
+  assert.equal(room.turnDeadlineAt, null);
   assert.equal(result.legalMoves.length, 1);
   assert.equal(piece(room, "p1", 0).progress, 2);
   assert.equal(room.lastAction.type, "roll");
@@ -172,6 +247,39 @@ test("movimenta automaticamente quando so ha uma peca possivel", () => {
   assert.equal(room.currentTurnPlayerId, "p2");
 });
 
+test("acao manual antes do timeout impede automacao duplicada", () => {
+  const room = makeRoom(2);
+  startLudoGame(room, { now: 1000 });
+  setPiece(room, "p1", 0, 2);
+  setPiece(room, "p1", 1, 4);
+  rollLudoDice(room, { socketId: "p1", diceValue: 2, now: 2000 });
+  const oldDeadline = room.turnDeadlineAt;
+  moveLudoPiece(room, { socketId: "p1", pieceId: piece(room, "p1", 1).id, now: 3000 });
+  const beforeTimeout = {
+    currentTurnPlayerId: room.currentTurnPlayerId,
+    pieceProgress: piece(room, "p1", 0).progress,
+  };
+  const result = processLudoTurnTimeout(room, { now: oldDeadline + 1, diceValue: 6 });
+  assert.equal(result, null);
+  assert.equal(room.currentTurnPlayerId, beforeTimeout.currentTurnPlayerId);
+  assert.equal(piece(room, "p1", 0).progress, beforeTimeout.pieceProgress);
+});
+
+test("entra na reta final sem andar casa externa extra", () => {
+  const room = makeRoom(2);
+  startLudoGame(room);
+  const config = LUDO_TEST_CONSTANTS.getLudoBoardConfig(room.boardVariant);
+  const homeEntryProgress = LUDO_TEST_CONSTANTS.getHomeEntryProgress(room.boardVariant);
+  setPiece(room, "p1", 0, homeEntryProgress - 1);
+  const result = rollLudoDice(room, { socketId: "p1", diceValue: 1 });
+  assert.equal(result.autoMove.pieceId, piece(room, "p1", 0).id);
+  applyAutoMove(room, result);
+  assert.equal(piece(room, "p1", 0).progress, homeEntryProgress);
+  assert.equal(piece(room, "p1", 0).absoluteCell, null);
+  assert.equal(piece(room, "p1", 0).state, "active");
+  assert.equal(config.trackSize, 52);
+});
+
 test("chegada exige numero exato", () => {
   const room = makeRoom(2);
   startLudoGame(room);
@@ -180,6 +288,9 @@ test("chegada exige numero exato", () => {
   const blocked = rollLudoDice(room, { socketId: "p1", diceValue: 3 });
   assert.equal(blocked.legalMoves.length, 0);
   assert.equal(piece(room, "p1", 0).progress, config.finishProgress - 2);
+  assert.equal(room.lastAction.type, "roll");
+  assert.equal(room.lastAction.value, 3);
+  assert.equal(room.dice.rolled, false);
 
   room.currentTurnPlayerId = "p1";
   room.turnIndex = 0;

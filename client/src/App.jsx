@@ -1415,9 +1415,32 @@ export default function App() {
     const winner = room.winner;
     const boardVariant = room.board?.variant || getLudoBoardVariant(room.settings?.maxPlayers || room.players.length);
     const boardLabel = boardVariant === "classic" ? "Ludo classico" : "Ludo 6 cores";
+    const diceAction = ["roll", "triple-six"].includes(room.lastAction?.type) ? room.lastAction : null;
+    const diceRollKey = diceAction?.createdAt || null;
+    const diceValue = room.dice?.value || diceAction?.value || null;
+    const dicePlayer = ludoPlayerById(room.players, diceAction?.playerId) || currentPlayer;
     const waitingAutoMove = room.lastAction?.type === "roll" && (room.legalMoves || []).length === 1;
-    const diceRollKey = room.lastAction?.type === "roll" ? room.lastAction.createdAt : null;
     const diceLabel = canRoll ? "Rolar" : waitingAutoMove ? "Rolando" : isMyTurn ? "Mova uma peca" : "Aguarde";
+    const ludoTimeLeft = room.turnDeadlineAt ? Math.max(0, Math.ceil((room.turnDeadlineAt - ludoNow) / 1000)) : 0;
+    const ludoTimerLabel = room.turnPhase === "move" ? "Escolher peca" : "Rolar dado";
+    const showLudoTimer = room.status === "ludo-playing" && Boolean(room.turnDeadlineAt);
+    const ludoHint = room.lastAction?.timeout && room.lastAction?.automatic
+      ? "Tempo esgotado: jogada automatica."
+      : room.lastAction?.type === "triple-six"
+      ? "Tres 6 seguidos: perdeu a vez."
+      : room.lastAction?.type === "finish-piece"
+      ? "Peca finalizada. Voce ganhou uma jogada extra."
+      : room.lastAction?.type === "capture"
+      ? "Captura feita. A peca voltou para a base."
+      : room.lastAction?.automatic
+      ? "Jogada unica: peca movida automaticamente."
+      : waitingAutoMove
+      ? "Jogada unica: a peca vai se mover apos o dado."
+      : room.turnPhase === "roll"
+      ? "Tempo para rolar o dado. Se acabar, o jogo rola sozinho."
+      : room.turnPhase === "move"
+      ? "Tempo para escolher uma peca. Se acabar, o jogo move sozinho."
+      : "Clique em uma peca destacada depois de rolar o dado.";
 
     if (room.status === "ludo-finished") {
       return <section className="panel final ludo-final">
@@ -1435,16 +1458,21 @@ export default function App() {
     return <section className="ludo-game-layout">
       <div className="panel ludo-board-panel">
         <div className="ludo-game-head">
-          <div>
+          <div className="ludo-title-stack">
             <div className="badge"><Gamepad2 size={15} /> {boardLabel}</div>
             <h2>{currentPlayer ? `Vez de ${currentPlayer.name}` : "Ludo"}</h2>
+            {showLudoTimer && <div className={cx("ludo-turn-timer", ludoTimeLeft <= 5 && "danger")}>
+              <Timer size={16} />
+              <span>{ludoTimerLabel}</span>
+              <strong>{ludoTimeLeft}s</strong>
+            </div>}
           </div>
           <LudoDice
-            value={room.dice?.value}
+            value={diceValue}
             canRoll={canRoll}
             rollKey={diceRollKey}
             onRoll={rollLudoDice}
-            playerColor={currentPlayer?.colorHex || LUDO_COLORS[currentPlayer?.color] || "#a5b4fc"}
+            playerColor={dicePlayer?.colorHex || LUDO_COLORS[dicePlayer?.color] || "#a5b4fc"}
             label={diceLabel}
           />
         </div>
@@ -1470,7 +1498,7 @@ export default function App() {
           <button className="chat-send" type="submit" disabled={!ludoSpeechDraft.trim()} title="Enviar fala"><Send size={18} /></button>
         </form>
 
-        <div className="hint">{room.lastAction?.type === "triple-six" ? "Tres 6 seguidos: perdeu a vez." : room.lastAction?.type === "finish-piece" ? "Peca finalizada. Voce ganhou uma jogada extra." : room.lastAction?.type === "capture" ? "Captura feita. A peca voltou para a base." : room.lastAction?.automatic ? "Jogada unica: peca movida automaticamente." : waitingAutoMove ? "Jogada unica: a peca vai se mover apos o dado." : "Clique em uma peca destacada depois de rolar o dado."}</div>
+        <div className="hint">{ludoHint}</div>
         <button className="secondary big" onClick={leaveRoom}><LogOut size={19} /> Sair</button>
       </aside>
     </section>;

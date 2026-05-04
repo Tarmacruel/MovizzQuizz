@@ -36,6 +36,32 @@ export const LUDO_COLOR_SLOTS = [
   { color: "orange", colorName: "Laranja", colorHex: LUDO_COLORS.orange, ludoIndex: 5 },
 ];
 
+export const SIX_LUDO_GEOMETRY = {
+  BOARD_SIZE: 600,
+  CENTER: LUDO_CENTER,
+  OUTER_RADIUS: 292,
+  SECTOR_OUTER_RADIUS: 284,
+  SECTOR_INNER_RADIUS: 66,
+  TRACK_RADIUS: 218,
+  TRACK_CELL_WIDTH: 17,
+  TRACK_CELL_HEIGHT: 23.5,
+  TRACK_CELL_RADIUS: 4.5,
+  TRACK_CELLS_PER_SECTOR: 12,
+  HOME_RADIUS: 263,
+  BASE_SIZE: 96,
+  BASE_WIDTH: 96,
+  BASE_HEIGHT: 54,
+  HOME_SLOT_RADIUS: 8.4,
+  FINAL_CELL_SIZE: 21,
+  FINAL_CELL_RADIUS: 5,
+  FINAL_LANE_START_RADIUS: 184,
+  FINAL_LANE_STEP: 23,
+  CENTER_RADIUS: 36,
+  CENTER_WEDGE_RADIUS: 64,
+  STROKE_WIDTH: 2,
+  PIECE_SIZE: 22,
+};
+
 const CLASSIC_COLOR_SLOTS = [
   LUDO_COLOR_SLOTS[0], // top-left
   LUDO_COLOR_SLOTS[1], // top-right
@@ -118,6 +144,10 @@ export function getLudoBoardConfig(variant = "sixPlayers") {
   return LUDO_BOARD_CONFIGS[variant] || LUDO_BOARD_CONFIGS.sixPlayers;
 }
 
+export function getLudoHomeEntryProgress(variant) {
+  return getLudoBoardConfig(variant).trackSize - 1;
+}
+
 export function getLudoBoardSlots(variant) {
   return variant === "classic" ? CLASSIC_COLOR_SLOTS : LUDO_COLOR_SLOTS;
 }
@@ -150,8 +180,69 @@ export function ludoPolarPoint(radius, angleDeg, center = LUDO_CENTER) {
   };
 }
 
-export function getSixTrackPoint(cell, radius = 202) {
-  return ludoPolarPoint(radius, getLudoAngleForCell(cell));
+function angleVector(angleDeg) {
+  const angle = angleDeg * (Math.PI / 180);
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function pointFromBasis(center, radialAngle, tangentOffset = 0, radialOffset = 0) {
+  const tangent = angleVector(radialAngle + 90);
+  const radial = angleVector(radialAngle);
+  return {
+    x: center.x + tangent.x * tangentOffset + radial.x * radialOffset,
+    y: center.y + tangent.y * tangentOffset + radial.y * radialOffset,
+  };
+}
+
+function normalizeTrackCell(cell, trackSize = LUDO_BOARD_CONFIGS.sixPlayers.trackSize) {
+  return ((cell % trackSize) + trackSize) % trackSize;
+}
+
+export function getSixSectorAngle(slotOrIndex = 0) {
+  if (Number.isFinite(slotOrIndex)) {
+    return getLudoAngleForCell((slotOrIndex % 6) * SIX_LUDO_GEOMETRY.TRACK_CELLS_PER_SECTOR);
+  }
+  return getLudoAngleForCell(getSlotStartCell(slotOrIndex, "sixPlayers"));
+}
+
+function getSixTrackSegment(cell, radius = SIX_LUDO_GEOMETRY.TRACK_RADIUS) {
+  const normalized = normalizeTrackCell(cell);
+  const sector = Math.floor(normalized / SIX_LUDO_GEOMETRY.TRACK_CELLS_PER_SECTOR);
+  const index = normalized % SIX_LUDO_GEOMETRY.TRACK_CELLS_PER_SECTOR;
+  const startAngle = getSixSectorAngle(sector);
+  const start = ludoPolarPoint(radius, startAngle);
+  const end = ludoPolarPoint(radius, startAngle + 60);
+  const ratio = index / SIX_LUDO_GEOMETRY.TRACK_CELLS_PER_SECTOR;
+
+  return {
+    point: {
+      x: start.x + (end.x - start.x) * ratio,
+      y: start.y + (end.y - start.y) * ratio,
+    },
+    angle: startAngle + 120,
+    sector,
+    index,
+  };
+}
+
+export function getSixTrackPoint(cell, radius = SIX_LUDO_GEOMETRY.TRACK_RADIUS) {
+  return getSixTrackSegment(cell, radius).point;
+}
+
+export function getSixTrackTransform(cell) {
+  const segment = getSixTrackSegment(cell);
+  return `translate(${segment.point.x} ${segment.point.y}) rotate(${segment.angle})`;
+}
+
+export function getSixTrackRect(cell) {
+  return {
+    x: -SIX_LUDO_GEOMETRY.TRACK_CELL_WIDTH / 2,
+    y: -SIX_LUDO_GEOMETRY.TRACK_CELL_HEIGHT / 2,
+    width: SIX_LUDO_GEOMETRY.TRACK_CELL_WIDTH,
+    height: SIX_LUDO_GEOMETRY.TRACK_CELL_HEIGHT,
+    rx: SIX_LUDO_GEOMETRY.TRACK_CELL_RADIUS,
+    transform: getSixTrackTransform(cell),
+  };
 }
 
 export function getClassicTrackPoint(cell) {
@@ -182,8 +273,36 @@ export function getClassicBaseCenter(slot) {
   return CLASSIC_BASE_CENTERS[(slot?.ludoIndex || 0) % 4] || CLASSIC_BASE_CENTERS[0];
 }
 
-export function getSixBaseCenter(slot, radius = 255) {
-  return ludoPolarPoint(radius, getLudoAngleForCell(getSlotStartCell(slot, "sixPlayers")));
+export function getSixBaseCenter(slot, radius = SIX_LUDO_GEOMETRY.HOME_RADIUS) {
+  return ludoPolarPoint(radius, getSixSectorAngle(slot));
+}
+
+export function getSixBaseArea(slot) {
+  const angle = getSixSectorAngle(slot);
+  const center = getSixBaseCenter(slot);
+  return {
+    angle,
+    center,
+    width: SIX_LUDO_GEOMETRY.BASE_WIDTH,
+    height: SIX_LUDO_GEOMETRY.BASE_HEIGHT,
+    rx: 19,
+    transform: `rotate(${angle + 90} ${center.x} ${center.y})`,
+    labelPoint: pointFromBasis(center, angle, 0, 22),
+    scorePoint: pointFromBasis(center, angle, 0, -27),
+  };
+}
+
+export function getSixBaseSlotPoints(slot) {
+  const angle = getSixSectorAngle(slot);
+  const center = getSixBaseCenter(slot);
+  const offsets = [
+    { tangent: -18.5, radial: 8 },
+    { tangent: 18.5, radial: 8 },
+    { tangent: -18.5, radial: -17 },
+    { tangent: 18.5, radial: -17 },
+  ];
+
+  return offsets.map((offset) => pointFromBasis(center, angle, offset.tangent, offset.radial));
 }
 
 export function getBaseCenter(slot, variant) {
@@ -199,12 +318,47 @@ export function getLanePoint(slot, variant, laneIndex) {
     return CLASSIC_LANE_POINTS[slot?.ludoIndex || 0]?.[laneIndex] || LUDO_CENTER;
   }
 
-  const start = getLudoTrackPoint(getSlotStartCell(slot, variant), variant);
-  const ratio = (laneIndex + 1) / 7;
+  return getSixFinalLanePoint(slot, laneIndex);
+}
+
+export function getSixFinalLanePoint(slot, laneIndex) {
+  const radius = SIX_LUDO_GEOMETRY.FINAL_LANE_START_RADIUS - laneIndex * SIX_LUDO_GEOMETRY.FINAL_LANE_STEP;
+  return ludoPolarPoint(radius, getSixSectorAngle(slot));
+}
+
+export function getSixFinalLaneRect(slot, laneIndex) {
+  const point = getSixFinalLanePoint(slot, laneIndex);
+  const angle = getSixSectorAngle(slot) + 90;
+  const size = SIX_LUDO_GEOMETRY.FINAL_CELL_SIZE;
   return {
-    x: start.x + (LUDO_CENTER.x - start.x) * ratio,
-    y: start.y + (LUDO_CENTER.y - start.y) * ratio,
+    x: -size / 2,
+    y: -size / 2,
+    width: size,
+    height: size,
+    rx: SIX_LUDO_GEOMETRY.FINAL_CELL_RADIUS,
+    transform: `translate(${point.x} ${point.y}) rotate(${angle})`,
   };
+}
+
+export function getSixFinalLaneGuide(slot) {
+  const angle = getSixSectorAngle(slot);
+  return {
+    start: ludoPolarPoint(SIX_LUDO_GEOMETRY.FINAL_LANE_START_RADIUS + 15, angle),
+    end: ludoPolarPoint(SIX_LUDO_GEOMETRY.CENTER_WEDGE_RADIUS + 2, angle),
+  };
+}
+
+export function getSixFinishedPiecePoint(slot, pieceIndex = 0) {
+  const angle = getSixSectorAngle(slot);
+  const base = ludoPolarPoint(44, angle);
+  const offsets = [
+    { tangent: -5.2, radial: 3.6 },
+    { tangent: 5.2, radial: 3.6 },
+    { tangent: -5.2, radial: -6 },
+    { tangent: 5.2, radial: -6 },
+  ];
+  const offset = offsets[pieceIndex] || { tangent: 0, radial: 0 };
+  return pointFromBasis(base, angle, offset.tangent, offset.radial);
 }
 
 export function getPieceOffset(pieceIndex = 0, scale = 1) {
@@ -216,15 +370,31 @@ export function getLudoPiecePoint(piece, players = [], variant) {
   const config = getLudoBoardConfig(variant);
   const player = players.find((item) => item.id === piece.playerId) || {};
   const startCell = getPlayerStartCell(player, variant);
-  const offset = getPieceOffset(piece.pieceIndex || 0, piece.state === "home" ? 1 : 0.22);
+  const activeOffsetScale = variant === "sixPlayers" ? 0.14 : 0.22;
+  const offset = getPieceOffset(piece.pieceIndex || 0, piece.state === "home" ? 1 : activeOffsetScale);
+  const homeEntryProgress = getLudoHomeEntryProgress(variant);
 
   if (piece.state === "home" || piece.progress < 0) {
+    if (variant === "sixPlayers") {
+      const slots = getSixBaseSlotPoints(player);
+      return slots[piece.pieceIndex || 0] || getSixBaseCenter(player);
+    }
+
     const slots = getHomeSlotPoints(getBaseCenter(player, variant));
     return slots[piece.pieceIndex || 0] || getBaseCenter(player, variant);
   }
 
-  if (piece.progress >= config.trackSize) {
-    const laneIndex = Math.min(config.homeStretch - 1, Math.max(0, piece.progress - config.trackSize));
+  if (piece.state === "finished" || piece.progress >= config.finishProgress) {
+    if (variant === "sixPlayers") {
+      return getSixFinishedPiecePoint(player, piece.pieceIndex || 0);
+    }
+
+    const finishedOffset = getPieceOffset(piece.pieceIndex || 0, 0.24);
+    return { x: LUDO_CENTER.x + finishedOffset.x, y: LUDO_CENTER.y + finishedOffset.y };
+  }
+
+  if (piece.progress >= homeEntryProgress) {
+    const laneIndex = Math.min(config.homeStretch - 1, Math.max(0, piece.progress - homeEntryProgress));
     const point = getLanePoint(player, variant, laneIndex);
     return { x: point.x + offset.x, y: point.y + offset.y };
   }
@@ -249,17 +419,23 @@ export function ludoArcPath(innerRadius, outerRadius, startDeg, endDeg) {
   ].join(" ");
 }
 
-export function getSixSlicePath(slot, innerRadius = 84, outerRadius = 286) {
-  const center = getLudoAngleForCell(getSlotStartCell(slot, "sixPlayers"));
-  return ludoArcPath(innerRadius, outerRadius, center - 27, center + 27);
+export function getSixSlicePath(
+  slot,
+  innerRadius = SIX_LUDO_GEOMETRY.SECTOR_INNER_RADIUS,
+  outerRadius = SIX_LUDO_GEOMETRY.SECTOR_OUTER_RADIUS
+) {
+  const center = getSixSectorAngle(slot);
+  return ludoArcPath(innerRadius, outerRadius, center - 29, center + 29);
 }
 
 export function getSixHomePocketPath(slot) {
-  const center = getLudoAngleForCell(getSlotStartCell(slot, "sixPlayers"));
-  const left = ludoPolarPoint(278, center - 20);
-  const right = ludoPolarPoint(278, center + 20);
-  const point = ludoPolarPoint(188, center);
-  return `M ${left.x} ${left.y} L ${right.x} ${right.y} L ${point.x} ${point.y} Z`;
+  const center = getSixSectorAngle(slot);
+  const outerTip = ludoPolarPoint(286, center);
+  const outerLeft = ludoPolarPoint(252, center - 24);
+  const outerRight = ludoPolarPoint(252, center + 24);
+  const innerRight = ludoPolarPoint(228, center + 14);
+  const innerLeft = ludoPolarPoint(228, center - 14);
+  return `M ${outerTip.x} ${outerTip.y} L ${outerRight.x} ${outerRight.y} L ${innerRight.x} ${innerRight.y} L ${innerLeft.x} ${innerLeft.y} L ${outerLeft.x} ${outerLeft.y} Z`;
 }
 
 export function getHexagonPoints(radius = 292) {
@@ -285,10 +461,12 @@ export function getCenterTrianglePath(slot, variant) {
     return `M ${triangles[slot?.ludoIndex || 0] || triangles[0]} Z`;
   }
 
-  const angle = variant === "classic"
-    ? 0
-    : getLudoAngleForCell(getSlotStartCell(slot, variant));
-  const left = ludoPolarPoint(78, angle - 26);
-  const right = ludoPolarPoint(78, angle + 26);
+  return getSixCenterWedgePath(slot);
+}
+
+export function getSixCenterWedgePath(slot) {
+  const angle = getSixSectorAngle(slot);
+  const left = ludoPolarPoint(SIX_LUDO_GEOMETRY.CENTER_WEDGE_RADIUS, angle - 30);
+  const right = ludoPolarPoint(SIX_LUDO_GEOMETRY.CENTER_WEDGE_RADIUS, angle + 30);
   return `M ${LUDO_CENTER.x} ${LUDO_CENTER.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`;
 }

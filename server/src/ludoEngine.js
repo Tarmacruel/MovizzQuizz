@@ -7,6 +7,7 @@ const MIN_LUDO_PLAYERS = 2;
 const SPEECH_MS = 4200;
 const REACTION_MS = 2600;
 const MAX_REACTIONS = 24;
+const LUDO_TURN_DURATION_MS = 30 * 1000;
 const ALLOWED_REACTIONS = new Set(["😀", "😂", "😮", "👏", "🔥", "🎲", "😎", "😭"]);
 const PLAYER_COLORS = [
   { id: "red", name: "Vermelho", hex: "#ef4444" },
@@ -39,6 +40,10 @@ export function getLudoBoardVariant(playerCount = 0) {
 
 export function getLudoBoardConfig(variant = "sixPlayers") {
   return BOARD_CONFIGS[variant] || BOARD_CONFIGS.sixPlayers;
+}
+
+function getHomeEntryProgress(variant) {
+  return getLudoBoardConfig(variant).trackSize - 1;
 }
 
 function getStartCellsForVariant(variant) {
@@ -86,7 +91,7 @@ function getPlayerStartIndex(player) {
 
 function getAbsoluteCell(piece, player) {
   const config = getLudoBoardConfig(player?.boardVariant);
-  if (!piece || !player || piece.progress < 0 || piece.progress >= config.trackSize) return null;
+  if (!piece || !player || piece.progress < 0 || piece.progress >= getHomeEntryProgress(player?.boardVariant)) return null;
   return (getPlayerStartIndex(player) + piece.progress) % config.trackSize;
 }
 
@@ -175,6 +180,11 @@ export function createLudoRoom({ code, hostSocketId, playerName, playerId, socke
     legalMoves: [],
     turnSixStreak: 0,
     lastAction: null,
+    turnPhase: null,
+    turnDeadlineAt: null,
+    turnDurationMs: LUDO_TURN_DURATION_MS,
+    turnActionCounter: 0,
+    turnActionToken: null,
     winner: null,
     reactions: [],
     speechBubbles: {},
@@ -216,7 +226,34 @@ function getCurrentPlayer(room) {
   return getPlayerById(room, room.currentTurnPlayerId);
 }
 
-function advanceTurn(room) {
+function nextLudoActionToken(room) {
+  room.turnActionCounter = (room.turnActionCounter || 0) + 1;
+  room.turnActionToken = `${room.currentTurnPlayerId || "turn"}-${room.turnActionCounter}`;
+  return room.turnActionToken;
+}
+
+function armLudoTurnTimer(room, phase, now = Date.now()) {
+  room.turnPhase = phase;
+  room.turnDurationMs = LUDO_TURN_DURATION_MS;
+  room.turnDeadlineAt = now + LUDO_TURN_DURATION_MS;
+  return nextLudoActionToken(room);
+}
+
+function armLudoAutoMove(room) {
+  room.turnPhase = "move";
+  room.turnDurationMs = LUDO_TURN_DURATION_MS;
+  room.turnDeadlineAt = null;
+  return nextLudoActionToken(room);
+}
+
+function clearLudoTurnTimer(room) {
+  room.turnPhase = null;
+  room.turnDeadlineAt = null;
+  room.turnDurationMs = LUDO_TURN_DURATION_MS;
+  return nextLudoActionToken(room);
+}
+
+function advanceTurn(room, now = Date.now()) {
   const playerIds = getActivePlayerIds(room);
   if (!playerIds.length) return;
   const currentIndex = Math.max(0, playerIds.indexOf(room.currentTurnPlayerId));
@@ -225,11 +262,13 @@ function advanceTurn(room) {
   room.dice = { value: null, rolled: false, rollingPlayerId: null };
   room.legalMoves = [];
   room.turnSixStreak = 0;
+  armLudoTurnTimer(room, "roll", now);
 }
 
-function keepTurn(room) {
+function keepTurn(room, now = Date.now()) {
   room.dice = { value: null, rolled: false, rollingPlayerId: null };
   room.legalMoves = [];
+  armLudoTurnTimer(room, "roll", now);
 }
 
 function getLegalMovesForDice(room, player, diceValue) {
@@ -256,7 +295,7 @@ function getLegalMovesForDice(room, player, diceValue) {
         pieceId: piece.id,
         from: piece.progress,
         to,
-        targetCell: to < config.trackSize ? (getPlayerStartIndex(player) + to) % config.trackSize : null,
+        targetCell: to < getHomeEntryProgress(player.boardVariant) ? (getPlayerStartIndex(player) + to) % config.trackSize : null,
         leavesHome: false,
         finishes: to === config.finishProgress,
       };
@@ -281,6 +320,46 @@ function applyCapture(room, movingPiece, player) {
   return captured;
 }
 
+function getCaptureCountForMove(room, player, move) {
+  if (!Number.isFinite(move?.targetCell)) return 0;
+  if (getSafeCellsForVariant(room.boardVariant || getLudoBoardVariant(room.settings?.maxPlayers || room.players.length)).has(move.targetCell)) return 0;
+  return (room.pieces || []).filter((piece) => {
+    if (piece.playerId === player.id || piece.state !== "active") return false;
+    const opponent = getPlayerById(room, piece.playerId);
+    return getAbsoluteCell(piece, opponent) === move.targetCell;
+  }).length;
+}
+
+function compareAutoMoves(room, player, a, b) {
+  const pieceA = room.pieces.find((piece) => piece.id === a.pieceId) || {};
+  const pieceB = room.pieces.find((piece) => piece.id === b.pieceId) || {};
+  const scoreA = [
+    a.finishes ? 1 : 0,
+    getCaptureCountForMove(room, player, a) > 0 ? 1 : 0,
+    a.leavesHome ? 1 : 0,
+    Number.isFinite(a.to) ? a.to : -1,
+    Number.isFinite(pieceA.progress) ? pieceA.progress : -1,
+    -1 * (pieceA.pieceIndex || 0),
+  ];
+  const scoreB = [
+    b.finishes ? 1 : 0,
+    getCaptureCountForMove(room, player, b) > 0 ? 1 : 0,
+    b.leavesHome ? 1 : 0,
+    Number.isFinite(b.to) ? b.to : -1,
+    Number.isFinite(pieceB.progress) ? pieceB.progress : -1,
+    -1 * (pieceB.pieceIndex || 0),
+  ];
+
+  for (let index = 0; index < scoreA.length; index += 1) {
+    if (scoreA[index] !== scoreB[index]) return scoreB[index] - scoreA[index];
+  }
+  return 0;
+}
+
+function selectBestLudoMove(room, player, moves = room.legalMoves || []) {
+  return [...moves].sort((a, b) => compareAutoMoves(room, player, a, b))[0] || null;
+}
+
 function updatePlayerScores(room) {
   room.players = room.players.map((player) => ({ ...player, score: getFinishedPieces(room, player.id) }));
 }
@@ -302,6 +381,7 @@ function finishIfWon(room, player) {
   room.ranking = computeRanking(room);
   room.legalMoves = [];
   room.dice = { value: null, rolled: false, rollingPlayerId: null };
+  clearLudoTurnTimer(room);
   room.lastAction = {
     type: "win",
     playerId: player.id,
@@ -311,7 +391,7 @@ function finishIfWon(room, player) {
   return true;
 }
 
-export function startLudoGame(room) {
+export function startLudoGame(room, { now = Date.now() } = {}) {
   if (!["lobby", "ludo-finished"].includes(room.status)) {
     throw new Error("A partida Ludo ja esta em andamento.");
   }
@@ -330,15 +410,17 @@ export function startLudoGame(room) {
   room.dice = { value: null, rolled: false, rollingPlayerId: null };
   room.legalMoves = [];
   room.turnSixStreak = 0;
+  room.turnActionCounter = 0;
   room.lastAction = { type: "start", playerId: room.currentTurnPlayerId, createdAt: Date.now() };
   room.winner = null;
   room.reactions = [];
   room.speechBubbles = {};
   room.ranking = computeRanking(room);
   refreshPiecesForPlayers(room);
+  armLudoTurnTimer(room, "roll", now);
 }
 
-export function rollLudoDice(room, { socketId, diceValue } = {}) {
+export function rollLudoDice(room, { socketId, diceValue, automatic = false, timeout = false, now = Date.now() } = {}) {
   if (room.status !== "ludo-playing") throw new Error("A partida Ludo nao esta em andamento.");
   const player = findPlayer(room, socketId);
   if (!player) throw new Error("Jogador nao encontrado.");
@@ -353,6 +435,8 @@ export function rollLudoDice(room, { socketId, diceValue } = {}) {
     playerId: player.id,
     playerName: player.name,
     value,
+    automatic,
+    timeout,
     createdAt: Date.now(),
   };
 
@@ -363,36 +447,44 @@ export function rollLudoDice(room, { socketId, diceValue } = {}) {
       playerId: player.id,
       playerName: player.name,
       value,
+      automatic,
+      timeout,
       createdAt: Date.now(),
     };
-    advanceTurn(room);
+    advanceTurn(room, now);
     return { value, legalMoves: [] };
   }
 
   room.legalMoves = getLegalMovesForDice(room, player, value);
   if (!room.legalMoves.length) {
     if (value === 6) {
-      keepTurn(room);
+      keepTurn(room, now);
     } else {
-      advanceTurn(room);
+      advanceTurn(room, now);
     }
   } else if (room.legalMoves.length === 1) {
     const [automaticMove] = room.legalMoves;
+    const actionToken = armLudoAutoMove(room);
     return {
       value,
       legalMoves: room.legalMoves,
       autoMove: {
         ...automaticMove,
         playerId: player.id,
+        actionToken,
+        timeout,
       },
     };
+  } else {
+    armLudoTurnTimer(room, "move", now);
   }
 
   return { value, legalMoves: room.legalMoves };
 }
 
-export function moveLudoPiece(room, { socketId, pieceId, automatic = false }) {
+export function moveLudoPiece(room, { socketId, pieceId, automatic = false, timeout = false, actionToken = null, now = Date.now() } = {}) {
   if (room.status !== "ludo-playing") throw new Error("A partida Ludo nao esta em andamento.");
+  if (actionToken && actionToken !== room.turnActionToken) throw new Error("Jogada automatica expirada.");
   const player = findPlayer(room, socketId);
   if (!player) throw new Error("Jogador nao encontrado.");
   if (player.id !== room.currentTurnPlayerId) throw new Error("Aguarde sua vez.");
@@ -421,17 +513,57 @@ export function moveLudoPiece(room, { socketId, pieceId, automatic = false }) {
     to: move.to,
     capturedPieceIds,
     automatic,
+    timeout,
     createdAt: Date.now(),
   };
 
   if (finishIfWon(room, player)) return;
 
   if (room.dice.value === 6 || capturedPieceIds.length || move.finishes) {
-    keepTurn(room);
+    keepTurn(room, now);
   } else {
-    advanceTurn(room);
+    advanceTurn(room, now);
   }
   room.ranking = computeRanking(room);
+}
+
+export function processLudoTurnTimeout(room, { now = Date.now(), diceValue } = {}) {
+  if (room.gameType !== "ludo" || room.status !== "ludo-playing" || room.emptySince) return null;
+  if (!room.turnDeadlineAt || now < room.turnDeadlineAt) return null;
+
+  const player = getCurrentPlayer(room);
+  if (!player) return null;
+
+  if (room.turnPhase === "roll") {
+    const result = rollLudoDice(room, {
+      socketId: player.id,
+      diceValue,
+      automatic: true,
+      timeout: true,
+      now,
+    });
+    return { type: "roll", changed: true, result };
+  }
+
+  if (room.turnPhase === "move") {
+    const move = selectBestLudoMove(room, player, room.legalMoves || []);
+    if (!move) {
+      if (room.dice?.value === 6) keepTurn(room, now);
+      else advanceTurn(room, now);
+      return { type: "move", changed: true, skipped: true };
+    }
+
+    moveLudoPiece(room, {
+      socketId: player.id,
+      pieceId: move.pieceId,
+      automatic: true,
+      timeout: true,
+      now,
+    });
+    return { type: "move", changed: true, move };
+  }
+
+  return null;
 }
 
 export function addLudoReaction(room, { socketId, emoji }) {
@@ -502,6 +634,9 @@ export function getPublicLudoRoom(room) {
     players: room.players,
     pieces: room.pieces || [],
     currentTurnPlayerId: room.currentTurnPlayerId,
+    turnPhase: room.turnPhase || null,
+    turnDeadlineAt: room.turnDeadlineAt || null,
+    turnDurationMs: room.turnDurationMs || LUDO_TURN_DURATION_MS,
     dice: room.dice,
     legalMoves: room.legalMoves || [],
     lastAction: room.lastAction,
@@ -514,6 +649,7 @@ export function getPublicLudoRoom(room) {
       trackSize: config.trackSize,
       homeStretch: config.homeStretch,
       finishProgress: config.finishProgress,
+      homeEntryProgress: getHomeEntryProgress(variant),
       startCells: getStartCellsForVariant(variant),
       safeCells: [...getSafeCellsForVariant(variant)],
       colors: PLAYER_COLORS,
@@ -525,7 +661,9 @@ export const LUDO_TEST_CONSTANTS = {
   BOARD_CONFIGS,
   PLAYER_COLORS,
   SAFE_CELLS,
+  LUDO_TURN_DURATION_MS,
   getLudoBoardVariant,
   getLudoBoardConfig,
+  getHomeEntryProgress,
   getSafeCellsForVariant,
 };

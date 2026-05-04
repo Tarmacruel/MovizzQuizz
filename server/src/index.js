@@ -44,6 +44,7 @@ import {
   createLudoRoom,
   getPublicLudoRoom,
   moveLudoPiece,
+  processLudoTurnTimeout,
   pruneLudoEphemera,
   rollLudoDice,
   startLudoGame,
@@ -472,6 +473,35 @@ function emitError(socket, message) {
   socket.emit("room:error", { message });
 }
 
+function scheduleLudoAutoMove(room, autoMove) {
+  if (!room?.code || !autoMove?.pieceId) return;
+  const code = room.code;
+  const playerId = autoMove.playerId;
+  const pieceId = autoMove.pieceId;
+  const actionToken = autoMove.actionToken;
+  const timeout = Boolean(autoMove.timeout);
+
+  setTimeout(() => {
+    const currentRoom = rooms.get(code);
+    if (!currentRoom || currentRoom.gameType !== "ludo") return;
+    if (actionToken && currentRoom.turnActionToken !== actionToken) return;
+
+    try {
+      moveLudoPiece(currentRoom, {
+        socketId: playerId,
+        pieceId,
+        automatic: true,
+        timeout,
+        actionToken,
+      });
+      void persistGameProgress(currentRoom);
+      emitRoom(code);
+    } catch {
+      // The move may already have been made manually or invalidated by a disconnect/restart.
+    }
+  }, LUDO_AUTO_MOVE_DELAY_MS);
+}
+
 io.on("connection", (socket) => {
   socket.on("room:create", ({ playerName, playerId, settings } = {}) => {
     const cleanName = String(playerName || "").trim().slice(0, 24);
@@ -755,22 +785,7 @@ io.on("connection", (socket) => {
       const result = rollLudoDice(room, { socketId: socket.id });
       void persistGameProgress(room);
       emitRoom(room.code);
-      if (result.autoMove?.pieceId) {
-        const code = room.code;
-        const playerId = result.autoMove.playerId;
-        const pieceId = result.autoMove.pieceId;
-        setTimeout(() => {
-          const currentRoom = rooms.get(code);
-          if (!currentRoom || currentRoom.gameType !== "ludo") return;
-          try {
-            moveLudoPiece(currentRoom, { socketId: playerId, pieceId, automatic: true });
-            void persistGameProgress(currentRoom);
-            emitRoom(code);
-          } catch {
-            // The move may already have been made manually or invalidated by a disconnect/restart.
-          }
-        }, LUDO_AUTO_MOVE_DELAY_MS);
-      }
+      scheduleLudoAutoMove(room, result.autoMove);
     } catch (error) {
       emitError(socket, error.message);
     }
@@ -846,7 +861,14 @@ setInterval(() => {
     }
 
     if (room.gameType === "ludo") {
-      if (pruneLudoEphemera(room)) emitRoom(room.code);
+      let changed = pruneLudoEphemera(room);
+      const timeoutResult = processLudoTurnTimeout(room);
+      if (timeoutResult?.changed) {
+        changed = true;
+        void persistGameProgress(room);
+        scheduleLudoAutoMove(room, timeoutResult.result?.autoMove);
+      }
+      if (changed) emitRoom(room.code);
       continue;
     }
 
