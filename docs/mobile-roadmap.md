@@ -32,7 +32,7 @@ Observacao: SVG funciona como base visual e manifest inicial, mas para melhor co
 
 ## Fase 2 - Capacitor Android
 
-Status nesta branch:
+Status atual:
 
 - [x] Adicionar dependencias Capacitor no `client/package.json`
 - [x] Configurar `capacitor.config.json`
@@ -40,6 +40,7 @@ Status nesta branch:
 - [x] Adicionar scripts NPM para Android/Capacitor
 - [x] Preparar bridge nativa segura para App, Network, Haptics, StatusBar e SplashScreen
 - [x] Adicionar banner de conexao offline para PWA/app nativo
+- [x] Fixar `VITE_API_URL=https://quizz.sirel.com.br` para builds Android/producao
 - [ ] Rodar `npm install`
 - [ ] Rodar `npm run build`
 - [ ] Gerar plataforma Android com `npm run android:add`
@@ -51,6 +52,16 @@ Status nesta branch:
 - [ ] Build AAB release
 - [ ] Assinar AAB com keystore
 - [ ] Publicar na Google Play Store
+
+### Observacao critica sobre Android/Capacitor
+
+Dentro do WebView do Capacitor, `window.location.origin` pode apontar para um host interno do app, como `https://localhost`. Por isso, o build de producao precisa usar explicitamente:
+
+```bash
+VITE_API_URL=https://quizz.sirel.com.br
+```
+
+Esse valor esta registrado em `client/.env.production`. Sem isso, login, criacao de sala e socket podem tentar comunicar com o localhost do proprio dispositivo Android.
 
 Fora do escopo atual:
 
@@ -91,9 +102,15 @@ npm run preview
 cd client
 npm install
 npm run build
-npm run android:add
 npm run android:sync
 npm run android:open
+```
+
+Se a pasta `android/` ainda nao existir:
+
+```bash
+npm run android:add
+npm run android:sync
 ```
 
 No Android Studio:
