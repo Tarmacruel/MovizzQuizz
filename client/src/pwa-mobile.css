@@ -1,0 +1,59 @@
+html {
+  min-height: 100%;
+  background: #070713;
+}
+
+body {
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
+
+button,
+a,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    background: #070713;
+  }
+
+  .auth-first-page,
+  .new-home-page,
+  .page {
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 760px) {
+  .page,
+  .auth-first-page,
+  .new-home-page {
+    min-height: 100dvh;
+  }
+
+  .primary,
+  .secondary,
+  .auth-primary,
+  .auth-secondary,
+  .access-choice,
+  .game-mode-card,
+  .public-room-row {
+    min-height: 48px;
+  }
+}
