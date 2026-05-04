@@ -116,7 +116,7 @@ function getRoundResult(room) {
   };
 }
 
-export function createRoom({ code, hostSocketId, playerName, playerId, socketId, settings, questionBank, appSettings }) {
+export function createRoom({ code, hostSocketId, playerName, playerId, socketId, accountId = null, settings, questionBank, appSettings }) {
   const id = playerId || socketId;
   return {
     code,
@@ -124,7 +124,7 @@ export function createRoom({ code, hostSocketId, playerName, playerId, socketId,
     hostSocketId: hostSocketId || id,
     status: "lobby",
     settings: sanitizeSettings(settings, questionBank, appSettings),
-    players: [{ id, socketId, name: playerName, score: 0, connected: true }],
+    players: [{ id, socketId, accountId, name: playerName, score: 0, connected: true }],
     questions: [],
     currentIndex: 0,
     currentAnswers: {},
@@ -141,13 +141,17 @@ export function createRoom({ code, hostSocketId, playerName, playerId, socketId,
   };
 }
 
-export function joinRoom(room, { socketId, playerName, playerId }) {
-  const reconnectingPlayer = playerId ? room.players.find((player) => player.id === playerId) : null;
+export function joinRoom(room, { socketId, playerName, playerId, accountId = null }) {
+  const accountPlayer = accountId ? room.players.find((player) => player.accountId === accountId) : null;
+  const browserPlayer = playerId ? room.players.find((player) => player.id === playerId) : null;
+  const canUseBrowserFallback = browserPlayer && (!accountId || !browserPlayer.accountId || browserPlayer.accountId === accountId);
+  const reconnectingPlayer = accountPlayer || (canUseBrowserFallback ? browserPlayer : null);
 
   if (reconnectingPlayer) {
     reconnectingPlayer.socketId = socketId;
     reconnectingPlayer.connected = true;
     reconnectingPlayer.name = playerName || reconnectingPlayer.name;
+    reconnectingPlayer.accountId = reconnectingPlayer.accountId || accountId || null;
     room.emptySince = null;
     return reconnectingPlayer;
   }
@@ -160,9 +164,11 @@ export function joinRoom(room, { socketId, playerName, playerId }) {
     playerName = `${playerName} ${room.players.length + 1}`;
   }
 
+  const id = playerId && !room.players.some((item) => item.id === playerId) ? playerId : socketId;
   const player = {
-    id: playerId || socketId,
+    id,
     socketId,
+    accountId,
     name: playerName,
     score: 0,
     connected: true,

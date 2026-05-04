@@ -17,6 +17,7 @@ import {
   Lock,
   LogIn,
   LogOut,
+  Minus,
   MessageCircle,
   Play,
   Plus,
@@ -39,6 +40,7 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV && isLocalh
 const socket = io(API_URL, { autoConnect: true });
 const PLAYER_ID_KEY = "movizz_player_id";
 const ROOM_SESSION_KEY = "movizz_room_session";
+const ACCOUNT_SESSION_KEY = "movizz_account_session";
 const DEFAULT_CATEGORIES = ["Marvel", "Star Wars", "DC", "O Senhor dos Anéis", "Cultura Pop", "League of Legends"];
 const DEFAULT_DIFFICULTIES = ["Fácil", "Médio", "Difícil"];
 const DEFAULT_GAME_LIMITS = {
@@ -123,6 +125,46 @@ const normalizeClientText = (value) => String(value || "")
   .replace(/\s+/g, " ")
   .toLowerCase();
 const stopCategoryNames = (categories = []) => categories.map((category) => category.name || category);
+
+function clampInt(value, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return min;
+  return Math.max(min, Math.min(Math.round(numeric), max));
+}
+
+function rangeValues(min, max, step = 1) {
+  const safeMin = Number(min);
+  const safeMax = Number(max);
+  const safeStep = Math.max(1, Number(step) || 1);
+  if (!Number.isFinite(safeMin) || !Number.isFinite(safeMax) || safeMax < safeMin) return [];
+  const values = [];
+  for (let value = safeMin; value <= safeMax; value += safeStep) {
+    values.push(value);
+  }
+  if (!values.includes(safeMax)) values.push(safeMax);
+  return values;
+}
+
+function NumberSelect({ label, value, min, max, step = 1, disabled = false, suffix = "", onChange }) {
+  const current = clampInt(value, min, max);
+  const options = [...new Set([...rangeValues(min, max, step), current])].sort((a, b) => a - b);
+  const apply = (next) => onChange?.(clampInt(next, min, max));
+
+  return <label className="quantity-field">
+    <span className="quantity-label">{label}</span>
+    <div className="quantity-control">
+      <button type="button" className="quantity-stepper" disabled={disabled || current <= min} onClick={() => apply(current - step)} aria-label={`Diminuir ${label}`}>
+        <Minus size={16} />
+      </button>
+      <select className="quantity-select" disabled={disabled} value={current} onChange={(event) => apply(event.target.value)}>
+        {options.map((option) => <option key={option} value={option}>{option}{suffix}</option>)}
+      </select>
+      <button type="button" className="quantity-stepper" disabled={disabled || current >= max} onClick={() => apply(current + step)} aria-label={`Aumentar ${label}`}>
+        <Plus size={16} />
+      </button>
+    </div>
+  </label>;
+}
 
 function renderDiePips(value) {
   const active = new Set(DIE_PIPS[value || 0] || DIE_PIPS[0]);
@@ -243,6 +285,22 @@ function saveRoomSession(session) {
 
 function clearRoomSession() {
   localStorage.removeItem(ROOM_SESSION_KEY);
+}
+
+function readAccountSession() {
+  try {
+    return JSON.parse(localStorage.getItem(ACCOUNT_SESSION_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function saveAccountSession(session) {
+  localStorage.setItem(ACCOUNT_SESSION_KEY, JSON.stringify(session));
+}
+
+function clearAccountSession() {
+  localStorage.removeItem(ACCOUNT_SESSION_KEY);
 }
 
 function getInviteRoomCode(pathname = window.location.pathname) {
@@ -511,12 +569,13 @@ function AdminPanel() {
 
 export default function App() {
   const restoredSessionRef = useRef(readRoomSession());
+  const restoredAccountRef = useRef(readAccountSession());
   const initialInviteRoomCode = getInviteRoomCode();
   const reconnectAttemptedRef = useRef(false);
   const letterBadgeRef = useRef(null);
   const firstStopAnswerRef = useRef(null);
   const reviewChatEndRef = useRef(null);
-  const [playerName, setPlayerName] = useState(restoredSessionRef.current?.playerName || "");
+  const [playerName, setPlayerName] = useState(restoredSessionRef.current?.playerName || restoredAccountRef.current?.account?.displayName || "");
   const [roomCodeInput, setRoomCodeInput] = useState(initialInviteRoomCode || restoredSessionRef.current?.roomCode || "");
   const [roomCode, setRoomCode] = useState("");
   const [playerId, setPlayerId] = useState(restoredSessionRef.current?.playerId || getBrowserPlayerId());
@@ -542,8 +601,19 @@ export default function App() {
   const [availableCategories, setAvailableCategories] = useState(DEFAULT_CATEGORIES);
   const [availableDifficulties, setAvailableDifficulties] = useState(DEFAULT_DIFFICULTIES);
   const [roomLists, setRoomLists] = useState({ publicRooms: [], privateRooms: [] });
+  const [accountSession, setAccountSession] = useState(restoredAccountRef.current);
+  const [accountProfile, setAccountProfile] = useState({
+    stats: restoredAccountRef.current?.stats || null,
+    activeRooms: restoredAccountRef.current?.activeRooms || [],
+  });
+  const [accountMode, setAccountMode] = useState("login");
+  const [accountForm, setAccountForm] = useState({ handle: "", displayName: "", pin: "" });
+  const [accountMessage, setAccountMessage] = useState("");
+  const [accountLoading, setAccountLoading] = useState(false);
 
   const isHost = room?.hostSocketId === playerId;
+  const accountToken = accountSession?.token || "";
+  const activeAccount = accountSession?.account || null;
   const isStopRoom = room?.gameType === "stop";
   const isLudoRoom = room?.gameType === "ludo";
   const hasAnswered = Boolean(room?.currentAnswers?.[playerId]);
@@ -647,6 +717,42 @@ export default function App() {
   }, [isAdminRoute]);
 
   useEffect(() => {
+    if (isAdminRoute || !accountToken) return undefined;
+    let active = true;
+
+    fetch(`${API_URL}/auth/me`, { headers: withAuth(accountToken) })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.message || "Sessao expirada.");
+        return payload;
+      })
+      .then((payload) => {
+        if (!active) return;
+        const nextSession = {
+          token: accountToken,
+          account: payload.account,
+          stats: payload.stats,
+          activeRooms: payload.activeRooms || [],
+        };
+        setAccountSession(nextSession);
+        setAccountProfile({ stats: payload.stats, activeRooms: payload.activeRooms || [] });
+        saveAccountSession(nextSession);
+        setPlayerName((prev) => prev || payload.account?.displayName || "");
+      })
+      .catch((authError) => {
+        if (!active) return;
+        clearAccountSession();
+        setAccountSession(null);
+        setAccountProfile({ stats: null, activeRooms: [] });
+        setAccountMessage(authError.message);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountToken, isAdminRoute]);
+
+  useEffect(() => {
     if (isAdminRoute || room) return undefined;
     let active = true;
 
@@ -671,14 +777,15 @@ export default function App() {
 
   useEffect(() => {
     if (isAdminRoute) return undefined;
-    const onJoined = ({ roomCode, playerId }) => {
+    const onJoined = ({ roomCode, playerId, accountId }) => {
       setRoomCode(roomCode);
       setRoomCodeInput(roomCode);
       setInviteRoomCode(roomCode);
       setPlayerId(playerId);
       localStorage.setItem(PLAYER_ID_KEY, playerId);
-      saveRoomSession({ roomCode, playerId, playerName });
+      saveRoomSession({ roomCode, playerId, playerName, accountId: accountId || null });
       setAppPath(`/jogar/${roomCode}`);
+      if (accountToken) refreshAccountProfile(accountToken).catch(() => null);
       setError("");
     };
     const onLeft = () => {
@@ -714,20 +821,21 @@ export default function App() {
       socket.off("room:update", onUpdate);
       socket.off("room:error", onError);
     };
-  }, [playerId, playerName, isAdminRoute]);
+  }, [playerId, playerName, isAdminRoute, accountToken]);
 
   useEffect(() => {
     if (isAdminRoute || room || reconnectAttemptedRef.current) return undefined;
     const session = restoredSessionRef.current;
-    if (!session?.roomCode || !session?.playerId || !session?.playerName) return undefined;
+    if (!session?.roomCode || (!session?.playerId && !accountToken)) return undefined;
     if (inviteRoomCode && String(session.roomCode).toUpperCase() !== inviteRoomCode) return undefined;
 
     const reconnect = () => {
       reconnectAttemptedRef.current = true;
       socket.emit("room:join", {
         roomCode: session.roomCode,
-        playerName: session.playerName,
-        playerId: session.playerId,
+        playerName: session.playerName || activeAccount?.displayName || playerName,
+        playerId: session.playerId || playerId,
+        accountToken,
       });
     };
 
@@ -738,7 +846,7 @@ export default function App() {
 
     socket.once("connect", reconnect);
     return () => socket.off("connect", reconnect);
-  }, [room, isAdminRoute, inviteRoomCode]);
+  }, [room, isAdminRoute, inviteRoomCode, accountToken, activeAccount?.displayName, playerId, playerName]);
 
   useEffect(() => {
     setSelectedOption(null);
@@ -802,6 +910,89 @@ export default function App() {
 
   const answeredCount = useMemo(() => Object.keys(room?.currentAnswers || {}).length, [room?.currentAnswers]);
 
+  async function refreshAccountProfile(token = accountToken) {
+    if (!token) return;
+    const response = await fetch(`${API_URL}/auth/me`, { headers: withAuth(token) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || "Nao foi possivel carregar o perfil.");
+    const nextSession = {
+      token,
+      account: payload.account,
+      stats: payload.stats,
+      activeRooms: payload.activeRooms || [],
+    };
+    setAccountSession(nextSession);
+    setAccountProfile({ stats: payload.stats, activeRooms: payload.activeRooms || [] });
+    saveAccountSession(nextSession);
+  }
+
+  async function submitAccount(event) {
+    event.preventDefault();
+    setAccountLoading(true);
+    setAccountMessage("");
+    try {
+      const response = await fetch(`${API_URL}/auth/${accountMode === "register" ? "register" : "login"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accountForm),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 404) {
+        throw new Error("Contas ainda nao estao ativas neste servidor. Atualize a API e aplique as migrations.");
+      }
+      if (!response.ok) throw new Error(payload.message || "Nao foi possivel entrar.");
+      const nextSession = {
+        token: payload.token,
+        account: payload.account,
+        stats: payload.stats,
+        activeRooms: payload.activeRooms || [],
+      };
+      saveAccountSession(nextSession);
+      setAccountSession(nextSession);
+      setAccountProfile({ stats: payload.stats, activeRooms: payload.activeRooms || [] });
+      setPlayerName((prev) => prev || payload.account?.displayName || "");
+      setAccountForm({ handle: "", displayName: "", pin: "" });
+      setAccountMessage(accountMode === "register" ? "Conta criada." : "Login efetuado.");
+    } catch (authError) {
+      setAccountMessage(authError.message);
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  async function logoutAccount() {
+    if (accountToken) {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        headers: withAuth(accountToken),
+      }).catch(() => null);
+    }
+    clearAccountSession();
+    setAccountSession(null);
+    setAccountProfile({ stats: null, activeRooms: [] });
+    setAccountMessage("Conta desconectada.");
+  }
+
+  function resumeAccountRoom(summary) {
+    const targetCode = String(summary?.code || "").trim().toUpperCase();
+    if (!targetCode) return;
+    const targetPlayerId = summary.playerId || playerId;
+    const targetName = summary.playerName || playerName || activeAccount?.displayName || "";
+    if (summary.playerId) {
+      setPlayerId(summary.playerId);
+      localStorage.setItem(PLAYER_ID_KEY, summary.playerId);
+    }
+    setRoomCodeInput(targetCode);
+    setPlayerName(targetName);
+    setError("");
+    socket.emit("room:join", {
+      roomCode: targetCode,
+      playerName: targetName,
+      playerId: targetPlayerId,
+      accountToken,
+    });
+  }
+
   function createRoom(gameType = selectedGameType) {
     const payload = gameType === "stop"
       ? { ...stopSettings, gameType: "stop" }
@@ -809,14 +1000,14 @@ export default function App() {
         ? { ...ludoSettings, gameType: "ludo" }
       : { ...settings, gameType: "quiz" };
     setSelectedGameType(gameType);
-    socket.emit("room:create", { playerName, playerId, settings: payload });
+    socket.emit("room:create", { playerName: playerName || activeAccount?.displayName || "", playerId, accountToken, settings: payload });
   }
 
   function joinRoom(code = roomCodeInput) {
     const targetCode = String(code || "").trim().toUpperCase();
     setRoomCodeInput(targetCode);
     setError("");
-    socket.emit("room:join", { playerName, playerId, roomCode: targetCode });
+    socket.emit("room:join", { playerName: playerName || activeAccount?.displayName || "", playerId, accountToken, roomCode: targetCode });
   }
 
   function leaveRoom() {
@@ -1004,6 +1195,7 @@ export default function App() {
       : stopMode
       ? `${summary.categories?.length || 0} temas: ${(summary.categories || []).slice(0, 3).join(", ")}`
       : (summary.categories || []).slice(0, 3).join(", ");
+    const resumableRoom = (accountProfile.activeRooms || []).find((item) => item.code === summary.code);
     return <div className="room-card" key={`${privateRoom ? "private" : "public"}-${summary.code || summary.createdAt}`}>
       <div>
         <div className="room-card-title">
@@ -1015,7 +1207,9 @@ export default function App() {
       </div>
       {privateRoom
         ? <span className="room-chip">Código obrigatório</span>
-        : <button className="mini-button" disabled={isFull} onClick={() => joinRoom(summary.code)}>{isFull ? "Lotada" : "Entrar"}</button>}
+        : resumableRoom
+          ? <button className="mini-button" onClick={() => resumeAccountRoom(resumableRoom)}>Retomar</button>
+          : <button className="mini-button" disabled={isFull} onClick={() => joinRoom(summary.code)}>{isFull ? "Lotada" : "Entrar"}</button>}
     </div>;
   }
 
@@ -1032,7 +1226,9 @@ export default function App() {
       : summary
       ? "Partida em andamento"
       : "Sala indisponivel";
-    const canJoinInvite = Boolean(summary && playerName.trim() && !inviteLoading);
+    const accountInviteRoom = (accountProfile.activeRooms || []).find((item) => item.code === inviteRoomCode);
+    const canResumeInvite = Boolean(accountToken && accountInviteRoom && !inviteLoading);
+    const canJoinInvite = Boolean(summary && (playerName.trim() || activeAccount) && !inviteLoading);
 
     return <main className="page invite-page">
       <section className="hero compact-hero invite-hero">
@@ -1044,7 +1240,8 @@ export default function App() {
       <section className="invite-layout">
         <form className="panel invite-panel" onSubmit={(event) => {
           event.preventDefault();
-          if (canJoinInvite) joinRoom(inviteRoomCode);
+          if (canResumeInvite) resumeAccountRoom(accountInviteRoom);
+          else if (canJoinInvite) joinRoom(inviteRoomCode);
         }}>
           <div className="panel-title"><LogIn /> Entrar pela sala</div>
           <div className="invite-code">{inviteRoomCode}</div>
@@ -1053,7 +1250,9 @@ export default function App() {
             <div className="round-meta"><div>Jogo</div><strong>{modeLabel}</strong></div>
             <div className="round-meta"><div>Vagas</div><strong>{summary.playerCount}/{summary.maxPlayers}</strong></div>
           </>}
+          {canResumeInvite && <div className="hint">Sua conta ja participa desta sala. Voce pode retomar a mesma vaga.</div>}
           <label>Seu nome<input autoFocus value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Ex.: Player 2" /></label>
+          {canResumeInvite && <button className="primary big" type="button" onClick={() => resumeAccountRoom(accountInviteRoom)}><RotateCcw size={18} /> Retomar minha vaga</button>}
           <button className="primary big" disabled={!canJoinInvite}><LogIn size={18} /> Entrar na sala</button>
           <button className="secondary" type="button" onClick={() => {
             setInviteRoomCode("");
@@ -1082,6 +1281,55 @@ export default function App() {
         <button className="secondary" onClick={leaveRoom}><Home size={19} /> Voltar ao início</button>
       </div>
     </section>;
+  }
+
+  function renderAccountPanel() {
+    const stats = accountProfile.stats || {};
+    const activeRooms = accountProfile.activeRooms || [];
+
+    if (activeAccount) {
+      return <div className="panel account-panel">
+        <div className="panel-title"><Shield /> Perfil</div>
+        <div className="account-head">
+          <div>
+            <strong>{activeAccount.displayName}</strong>
+            <span>@{activeAccount.handle}</span>
+          </div>
+          <button className="secondary inline-action" onClick={logoutAccount}><LogOut size={17} /> Sair</button>
+        </div>
+        <div className="account-stats">
+          <div><span>Jogadas</span><strong>{stats.matchesPlayed || 0}</strong></div>
+          <div><span>Vitorias</span><strong>{stats.wins || 0}</strong></div>
+          <div><span>Pontos</span><strong>{stats.totalScore || 0}</strong></div>
+        </div>
+        <div className="section-label">Salas recuperaveis</div>
+        <div className="account-room-list">
+          {activeRooms.length ? activeRooms.map((summary) => <div className="room-card compact" key={`resume-${summary.code}`}>
+            <div>
+              <div className="room-card-title"><RotateCcw size={16} /> Sala {summary.code}</div>
+              <div className="meta-line">{summary.gameType === "stop" ? "Stop / Adedanha" : summary.gameType === "ludo" ? "Ludo" : "Quiz"} - {summary.status}</div>
+              <div className="meta-line">Sua vaga: {summary.playerName || activeAccount.displayName}</div>
+            </div>
+            <button className="mini-button" onClick={() => resumeAccountRoom(summary)}>Retomar</button>
+          </div>) : <div className="empty-state">Nenhuma vaga ativa para retomar.</div>}
+        </div>
+        {accountMessage && <div className="hint">{accountMessage}</div>}
+      </div>;
+    }
+
+    return <form className="panel account-panel" onSubmit={submitAccount}>
+      <div className="panel-title"><Shield /> Conta opcional</div>
+      <div className="segmented">
+        <button type="button" className={cx(accountMode === "login" && "active")} onClick={() => setAccountMode("login")}><LogIn size={16} /> Entrar</button>
+        <button type="button" className={cx(accountMode === "register" && "active")} onClick={() => setAccountMode("register")}><Plus size={16} /> Criar conta</button>
+      </div>
+      <label>Apelido<input value={accountForm.handle} onChange={(e) => setAccountForm({ ...accountForm, handle: e.target.value })} placeholder="ex.: jonatas" autoComplete="username" /></label>
+      {accountMode === "register" && <label>Nome exibido<input value={accountForm.displayName} onChange={(e) => setAccountForm({ ...accountForm, displayName: e.target.value })} placeholder="Ex.: Jonatas" /></label>}
+      <label>PIN<input inputMode="numeric" pattern="[0-9]*" type="password" value={accountForm.pin} onChange={(e) => setAccountForm({ ...accountForm, pin: e.target.value })} placeholder="4 a 8 digitos" autoComplete={accountMode === "register" ? "new-password" : "current-password"} /></label>
+      <button className="secondary" disabled={accountLoading}>{accountMode === "register" ? "Criar e entrar" : "Entrar com PIN"}</button>
+      <div className="hint">Conta leve para retomar sua vaga se atualizar, trocar de dispositivo ou perder conexao.</div>
+      {accountMessage && <div className="hint">{accountMessage}</div>}
+    </form>;
   }
 
   function renderGameModeCard(type, title, description, Icon) {
@@ -1120,11 +1368,11 @@ export default function App() {
         <div className="panel-title"><ListChecks /> Configuracao Stop</div>
         <div className="form-grid">
           <label>Nome da partida<input disabled={!isHost} value={activeStopSettings.matchName || ""} onChange={(e) => patchStopSettings({ matchName: e.target.value })} /></label>
-          <label>Tempo por rodada<input disabled={!isHost} type="number" min="15" max="300" value={activeStopSettings.roundSeconds} onChange={(e) => patchStopSettings({ roundSeconds: Number(e.target.value) })} /></label>
-          <label>Quantidade de rodadas<input disabled={!isHost} type="number" min="1" max={gameLimits.maxRounds} value={activeStopSettings.totalRounds} onChange={(e) => patchStopSettings({ totalRounds: Number(e.target.value) })} /></label>
-          <label>Participantes<input disabled={!isHost} type="number" min={room.players.length} max={gameLimits.maxPlayers} value={activeStopSettings.maxPlayers} onChange={(e) => patchStopSettings({ maxPlayers: Number(e.target.value) })} /></label>
-          <label>Pontos base<input disabled={!isHost} type="number" min="0" max="100" value={activeStopSettings.basePoints} onChange={(e) => patchStopSettings({ basePoints: Number(e.target.value) })} /></label>
-          <label>Bonus resposta unica<input disabled={!isHost} type="number" min="0" max="100" value={activeStopSettings.uniqueBonus} onChange={(e) => patchStopSettings({ uniqueBonus: Number(e.target.value) })} /></label>
+          <NumberSelect label="Tempo por rodada" disabled={!isHost} min={15} max={300} step={15} suffix="s" value={activeStopSettings.roundSeconds} onChange={(value) => patchStopSettings({ roundSeconds: value })} />
+          <NumberSelect label="Quantidade de rodadas" disabled={!isHost} min={1} max={gameLimits.maxRounds} value={activeStopSettings.totalRounds} onChange={(value) => patchStopSettings({ totalRounds: value })} />
+          <NumberSelect label="Participantes" disabled={!isHost} min={room.players.length} max={gameLimits.maxPlayers} value={activeStopSettings.maxPlayers} onChange={(value) => patchStopSettings({ maxPlayers: value })} />
+          <NumberSelect label="Pontos base" disabled={!isHost} min={0} max={100} step={5} value={activeStopSettings.basePoints} onChange={(value) => patchStopSettings({ basePoints: value })} />
+          <NumberSelect label="Bonus resposta unica" disabled={!isHost} min={0} max={100} step={5} value={activeStopSettings.uniqueBonus} onChange={(value) => patchStopSettings({ uniqueBonus: value })} />
         </div>
         <label>Letras permitidas<input disabled={!isHost} value={activeStopSettings.letters || ""} onChange={(e) => patchStopSettings({ letters: e.target.value.toUpperCase() })} /></label>
         <div className="switch-grid">
@@ -1393,7 +1641,7 @@ export default function App() {
         <div className="panel-title"><Gamepad2 /> Configuracao Ludo</div>
         <div className="form-grid">
           <label>Nome da partida<input disabled={!isHost} value={activeLudoSettings.matchName || ""} onChange={(event) => patchLudoSettings({ matchName: event.target.value })} /></label>
-          <label>Participantes<input disabled={!isHost} type="number" min="2" max="6" value={activeLudoSettings.maxPlayers} onChange={(event) => patchLudoSettings({ maxPlayers: Number(event.target.value) })} /></label>
+          <NumberSelect label="Participantes" disabled={!isHost} min={Math.max(2, room.players.length)} max={6} value={activeLudoSettings.maxPlayers} onChange={(value) => patchLudoSettings({ maxPlayers: value })} />
         </div>
         <div className="switch-grid">
           <label className="check-row"><input disabled={!isHost} type="checkbox" checked={Boolean(activeLudoSettings.isPublic)} onChange={(event) => patchLudoSettings({ isPublic: event.target.checked })} /> Sala publica</label>
@@ -1526,14 +1774,20 @@ export default function App() {
             {renderGameModeCard("ludo", "Ludo", "Tabuleiro para 2 a 6 jogadores, dado, capturas, emojis e baloes.", Gamepad2)}
           </div>
           <div className="section-label">Participantes</div>
-          <label>Maximo: {selectedGameType === "ludo" ? ludoSettings.maxPlayers : selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers}<input type="range" min={selectedGameType === "ludo" ? "2" : "1"} max={selectedGameType === "ludo" ? "6" : gameLimits.maxPlayers} value={selectedGameType === "ludo" ? ludoSettings.maxPlayers : selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers} onChange={(e) => selectedGameType === "ludo" ? patchLudoSettings({ maxPlayers: Number(e.target.value) }) : selectedGameType === "stop" ? patchStopSettings({ maxPlayers: Number(e.target.value) }) : patchSettings({ maxPlayers: Number(e.target.value) })} /></label>
+          <NumberSelect
+            label="Maximo de jogadores"
+            min={selectedGameType === "ludo" ? 2 : 1}
+            max={selectedGameType === "ludo" ? 6 : gameLimits.maxPlayers}
+            value={selectedGameType === "ludo" ? ludoSettings.maxPlayers : selectedGameType === "stop" ? stopSettings.maxPlayers : settings.maxPlayers}
+            onChange={(value) => selectedGameType === "ludo" ? patchLudoSettings({ maxPlayers: value }) : selectedGameType === "stop" ? patchStopSettings({ maxPlayers: value }) : patchSettings({ maxPlayers: value })}
+          />
           {selectedGameType === "quiz" && <>
             <div className="section-label">Rodadas</div>
             <div className="segmented">
               <button className={cx(settings.roundLimit === 0 && "active")} onClick={() => patchSettings({ roundLimit: 0 })}>Livres</button>
               <button className={cx(settings.roundLimit > 0 && "active")} onClick={() => patchSettings({ roundLimit: Math.max(1, settings.roundLimit || 3) })}>Pre-definidas</button>
             </div>
-            {settings.roundLimit > 0 && <label>Quantidade: {settings.roundLimit}<input type="range" min="1" max={gameLimits.maxRounds} value={settings.roundLimit} onChange={(e) => patchSettings({ roundLimit: Number(e.target.value) })} /></label>}
+            {settings.roundLimit > 0 && <NumberSelect label="Quantidade de rodadas" min={1} max={gameLimits.maxRounds} value={settings.roundLimit} onChange={(value) => patchSettings({ roundLimit: value })} />}
           </>}
           {selectedGameType === "stop" && <div className="hint">A configuracao completa do Stop fica no lobby: temas, letras, tempo, rodadas e pontuacao.</div>}
           {selectedGameType === "ludo" && <div className="hint">O Ludo usa cores automaticas, regras classicas e partida para 2 a 6 jogadores.</div>}
@@ -1544,6 +1798,8 @@ export default function App() {
           </div>
           <button className="primary big" onClick={() => createRoom(selectedGameType)}>Criar sala {selectedGameType === "ludo" ? "Ludo" : selectedGameType === "stop" ? "Stop" : "Quiz"}</button>
         </div>
+
+        {renderAccountPanel()}
 
         <div className="panel">
           <div className="panel-title"><LogIn /> Entrar em partida</div>
@@ -1611,17 +1867,17 @@ export default function App() {
         <div className="chips">{availableCategories.map((c) => <button key={c} disabled={!isHost} onClick={() => toggleSettingList("categories", c)} className={cx("chip", settings.categories?.includes(c) && "active")}>{c}</button>)}</div>
         <div className="section-label">Dificuldade</div>
         <div className="chips">{availableDifficulties.map((d) => <button key={d} disabled={!isHost} onClick={() => toggleSettingList("difficulties", d)} className={cx("chip", settings.difficulties?.includes(d) && "active-alt")}>{d}</button>)}</div>
-        <div className="sliders">
-          <label>Perguntas: {settings.totalQuestions}<input disabled={!isHost} type="range" min={gameLimits.minTotalQuestions} max={gameLimits.maxTotalQuestions} value={settings.totalQuestions} onChange={(e) => patchSettings({ totalQuestions: Number(e.target.value) })} /></label>
-          <label>Tempo: {settings.secondsPerQuestion}s<input disabled={!isHost} type="range" min={gameLimits.minSecondsPerQuestion} max={gameLimits.maxSecondsPerQuestion} value={settings.secondsPerQuestion} onChange={(e) => patchSettings({ secondsPerQuestion: Number(e.target.value) })} /></label>
-          <label>Participantes: {settings.maxPlayers}<input disabled={!isHost} type="range" min={room.players.length} max={gameLimits.maxPlayers} value={settings.maxPlayers} onChange={(e) => patchSettings({ maxPlayers: Number(e.target.value) })} /></label>
+        <div className="sliders quantity-grid">
+          <NumberSelect label="Perguntas" disabled={!isHost} min={gameLimits.minTotalQuestions} max={gameLimits.maxTotalQuestions} step={5} value={settings.totalQuestions} onChange={(value) => patchSettings({ totalQuestions: value })} />
+          <NumberSelect label="Tempo" disabled={!isHost} min={gameLimits.minSecondsPerQuestion} max={gameLimits.maxSecondsPerQuestion} step={5} suffix="s" value={settings.secondsPerQuestion} onChange={(value) => patchSettings({ secondsPerQuestion: value })} />
+          <NumberSelect label="Participantes" disabled={!isHost} min={room.players.length} max={gameLimits.maxPlayers} value={settings.maxPlayers} onChange={(value) => patchSettings({ maxPlayers: value })} />
         </div>
         <div className="section-label">Rodadas</div>
         <div className="segmented">
           <button disabled={!isHost} className={cx(settings.roundLimit === 0 && "active")} onClick={() => patchSettings({ roundLimit: 0 })}>Livres</button>
           <button disabled={!isHost} className={cx(settings.roundLimit > 0 && "active")} onClick={() => patchSettings({ roundLimit: Math.max(1, settings.roundLimit || 3) })}>Pré-definidas</button>
         </div>
-        {settings.roundLimit > 0 && <label>Quantidade: {settings.roundLimit}<input disabled={!isHost} type="range" min="1" max={gameLimits.maxRounds} value={settings.roundLimit} onChange={(e) => patchSettings({ roundLimit: Number(e.target.value) })} /></label>}
+        {settings.roundLimit > 0 && <NumberSelect label="Quantidade de rodadas" disabled={!isHost} min={1} max={gameLimits.maxRounds} value={settings.roundLimit} onChange={(value) => patchSettings({ roundLimit: value })} />}
         <div className="section-label">Privacidade</div>
         <div className="segmented">
           <button disabled={!isHost} className={cx(settings.isPublic && "active")} onClick={() => patchSettings({ isPublic: true })}><Globe2 size={16} /> Pública</button>

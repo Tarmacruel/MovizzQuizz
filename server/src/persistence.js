@@ -1,8 +1,9 @@
 import { prisma } from "./db.js";
 
 let warningShown = false;
+const FINAL_ROOM_STATUSES = new Set(["empty", "finished", "stop-finished", "ludo-finished"]);
 
-function hasDatabase() {
+export function hasDatabase() {
   return Boolean(process.env.DATABASE_URL);
 }
 
@@ -122,12 +123,14 @@ async function upsertPlayer(roomId, player) {
       },
     },
     update: {
+      accountId: player.accountId || null,
       name: player.name,
       score: player.score || 0,
       connected: player.connected ?? true,
     },
     create: {
       roomId,
+      accountId: player.accountId || null,
       socketId: player.id,
       name: player.name,
       score: player.score || 0,
@@ -135,6 +138,80 @@ async function upsertPlayer(roomId, player) {
     },
     select: { id: true },
   });
+}
+
+function scoreForPlayer(room, player) {
+  if (room.gameType !== "ludo") return Number(player.score || 0);
+  const finishedPieces = (room.pieces || []).filter((piece) => piece.playerId === player.id && piece.state === "finished").length;
+  return Math.max(Number(player.score || 0), finishedPieces);
+}
+
+function getSummaryRanking(room) {
+  const ranking = Array.isArray(room.ranking) && room.ranking.length
+    ? room.ranking
+    : Array.isArray(room.lastRoundResult?.ranking) && room.lastRoundResult.ranking.length
+      ? room.lastRoundResult.ranking
+      : [...(room.players || [])].sort((a, b) => scoreForPlayer(room, b) - scoreForPlayer(room, a));
+  const scoreById = new Map((room.players || []).map((player) => [player.id, scoreForPlayer(room, player)]));
+  return ranking.map((player, index) => ({
+    ...player,
+    rank: index + 1,
+    score: scoreById.get(player.id) ?? Number(player.score || 0),
+  }));
+}
+
+function getRoundsPlayed(room) {
+  if (room.gameType === "stop") return (room.rounds || []).length || room.roundNumber || 0;
+  if (room.gameType === "ludo") return room.status === "ludo-finished" ? 1 : 0;
+  return room.roundNumber || 0;
+}
+
+async function persistMatchSummaries(room, roomId, sessionId) {
+  if (!sessionId || !FINAL_ROOM_STATUSES.has(room.status)) return;
+  const ranking = getSummaryRanking(room);
+  const winnerId = ranking[0]?.id || null;
+  const finishedAt = new Date();
+  const roundsPlayed = getRoundsPlayed(room);
+
+  for (const rankedPlayer of ranking) {
+    const player = (room.players || []).find((item) => item.id === rankedPlayer.id) || rankedPlayer;
+    if (!player.accountId) continue;
+
+    await prisma.playerMatchSummary.upsert({
+      where: {
+        accountId_sessionId: {
+          accountId: player.accountId,
+          sessionId,
+        },
+      },
+      update: {
+        roomId,
+        roomCode: room.code,
+        gameType: room.gameType || "quiz",
+        matchName: room.settings?.matchName || null,
+        status: room.status,
+        score: rankedPlayer.score,
+        rank: rankedPlayer.rank,
+        won: rankedPlayer.id === winnerId,
+        roundsPlayed,
+        finishedAt,
+      },
+      create: {
+        accountId: player.accountId,
+        sessionId,
+        roomId,
+        roomCode: room.code,
+        gameType: room.gameType || "quiz",
+        matchName: room.settings?.matchName || null,
+        status: room.status,
+        score: rankedPlayer.score,
+        rank: rankedPlayer.rank,
+        won: rankedPlayer.id === winnerId,
+        roundsPlayed,
+        finishedAt,
+      },
+    });
+  }
 }
 
 async function syncPlayers(room, roomId) {
@@ -264,10 +341,11 @@ export async function persistGameProgress(room) {
         deck: serializeDeck(room),
         settings: room.settings,
         history: serializeHistory(room),
-        finishedAt: ["round_finished", "finished", "stop-finished", "ludo-finished"].includes(room.status) ? new Date() : undefined,
+        finishedAt: FINAL_ROOM_STATUSES.has(room.status) ? new Date() : undefined,
       },
     });
 
+    await persistMatchSummaries(room, roomId, sessionId);
     return true;
   });
 }
@@ -291,4 +369,131 @@ export async function persistRoomEmptied(room) {
       data: { status: "empty" },
     });
   });
+}
+
+function restorePlayers(players = []) {
+  return players.map((player) => ({
+    id: player.socketId,
+    socketId: null,
+    accountId: player.accountId || null,
+    name: player.name,
+    score: player.score || 0,
+    connected: false,
+  }));
+}
+
+function getRestoredSession(roomRecord) {
+  return Array.isArray(roomRecord.sessions) ? roomRecord.sessions[0] : null;
+}
+
+function baseRestoredRoom(roomRecord) {
+  const players = restorePlayers(roomRecord.players || []);
+  const session = getRestoredSession(roomRecord);
+  return {
+    code: roomRecord.code,
+    gameType: roomRecord.gameType || "quiz",
+    hostSocketId: roomRecord.hostSocketId,
+    status: roomRecord.status,
+    settings: roomRecord.settings || {},
+    players,
+    dbRoomId: roomRecord.id,
+    dbSessionId: session?.id || null,
+    emptySince: roomRecord.updatedAt?.getTime?.() || Date.now(),
+    createdAt: roomRecord.createdAt?.getTime?.() || Date.now(),
+  };
+}
+
+function restoreQuizRoom(roomRecord) {
+  const session = getRestoredSession(roomRecord);
+  const history = Array.isArray(session?.history) ? session.history : [];
+  return {
+    ...baseRestoredRoom(roomRecord),
+    questions: Array.isArray(session?.deck) ? session.deck : [],
+    currentIndex: session?.currentIndex || 0,
+    currentAnswers: {},
+    history,
+    roundNumber: history.length ? 1 : 0,
+    roundResults: [],
+    lastRoundResult: null,
+    usedQuestionIds: new Set(),
+    roundStartedAt: session?.startedAt?.getTime?.() || null,
+    roundEndsAt: null,
+    revealAt: null,
+  };
+}
+
+function restoreStopRoom(roomRecord) {
+  const session = getRestoredSession(roomRecord);
+  const deck = session?.deck && typeof session.deck === "object" ? session.deck : {};
+  const rounds = Array.isArray(deck.rounds) ? deck.rounds : [];
+  const currentRound = deck.currentRound || null;
+  return {
+    ...baseRestoredRoom(roomRecord),
+    roundNumber: currentRound?.roundNumber || rounds.length || session?.currentIndex || 0,
+    currentRound,
+    rounds,
+    usedLetters: Array.isArray(deck.usedLetters) ? deck.usedLetters : [],
+    lastRoundResult: rounds.length ? {
+      roundNumber: rounds[rounds.length - 1].roundNumber,
+      letter: rounds[rounds.length - 1].letter,
+      pointsByPlayer: rounds[rounds.length - 1].pointsByPlayer || {},
+      ranking: [],
+      finishedAt: rounds[rounds.length - 1].endedAt || Date.now(),
+    } : null,
+  };
+}
+
+function restoreLudoRoom(roomRecord) {
+  const session = getRestoredSession(roomRecord);
+  const deck = session?.deck && typeof session.deck === "object" ? session.deck : {};
+  const history = session?.history && typeof session.history === "object" ? session.history : {};
+  return {
+    ...baseRestoredRoom(roomRecord),
+    pieces: Array.isArray(deck.pieces) ? deck.pieces : [],
+    currentTurnPlayerId: deck.currentTurnPlayerId || null,
+    turnIndex: 0,
+    dice: deck.dice || { value: null, rolled: false, rollingPlayerId: null },
+    legalMoves: Array.isArray(deck.legalMoves) ? deck.legalMoves : [],
+    turnSixStreak: 0,
+    lastAction: deck.lastAction || history.lastAction || null,
+    turnPhase: deck.turnPhase || null,
+    turnDeadlineAt: deck.turnDeadlineAt || null,
+    turnDurationMs: deck.turnDurationMs || null,
+    turnActionCounter: 0,
+    turnActionToken: null,
+    winner: deck.winner || null,
+    ranking: Array.isArray(history.ranking) ? history.ranking : [],
+    reactions: Array.isArray(history.reactions) ? history.reactions : [],
+    speechBubbles: history.speechBubbles || {},
+  };
+}
+
+function restoreRoom(roomRecord) {
+  if (roomRecord.gameType === "stop") return restoreStopRoom(roomRecord);
+  if (roomRecord.gameType === "ludo") return restoreLudoRoom(roomRecord);
+  return restoreQuizRoom(roomRecord);
+}
+
+export async function restoreActiveRooms({ maxAgeMs } = {}) {
+  const cutoff = new Date(Date.now() - (maxAgeMs || 30 * 60 * 1000));
+  return persist("room:restore", async () => {
+    const roomRecords = await prisma.room.findMany({
+      where: {
+        status: { notIn: [...FINAL_ROOM_STATUSES] },
+        updatedAt: { gte: cutoff },
+      },
+      include: {
+        players: true,
+        sessions: {
+          where: { finishedAt: null },
+          orderBy: { updatedAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    });
+
+    return roomRecords.map(restoreRoom);
+  }, []);
 }

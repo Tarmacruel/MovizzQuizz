@@ -127,7 +127,7 @@ export function sanitizeStopSettings(settings = {}, appSettings = DEFAULT_APP_SE
   };
 }
 
-export function createStopRoom({ code, hostSocketId, playerName, playerId, socketId, settings, appSettings }) {
+export function createStopRoom({ code, hostSocketId, playerName, playerId, socketId, accountId = null, settings, appSettings }) {
   const id = playerId || socketId;
   return {
     code,
@@ -135,7 +135,7 @@ export function createStopRoom({ code, hostSocketId, playerName, playerId, socke
     hostSocketId: hostSocketId || id,
     status: "lobby",
     settings: sanitizeStopSettings(settings, appSettings),
-    players: [{ id, socketId, name: playerName, score: 0, connected: true }],
+    players: [{ id, socketId, accountId, name: playerName, score: 0, connected: true }],
     roundNumber: 0,
     currentRound: null,
     rounds: [],

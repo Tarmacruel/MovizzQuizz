@@ -12,6 +12,16 @@ import { prisma } from "./db.js";
 import { DEFAULT_APP_SETTINGS, sanitizeAppSettings } from "./appSettings.js";
 import { hashPassword, makeToken, verifyPassword } from "./security.js";
 import {
+  authPayload,
+  deletePlayerAccountSession,
+  getAccountByToken,
+  getAccountStats,
+  hasAccountDatabase,
+  loginPlayerAccount,
+  publicAccount,
+  registerPlayerAccount,
+} from "./playerAccounts.js";
+import {
   createRoom,
   disconnectPlayerBySocket,
   getPlayerBySocket,
@@ -60,6 +70,7 @@ import {
   persistRoomCreated,
   persistRoomEmptied,
   persistSettingsUpdated,
+  restoreActiveRooms,
 } from "./persistence.js";
 
 const PORT = process.env.PORT || 8001;
@@ -79,6 +90,7 @@ const CLIENT_ORIGINS = [
 ];
 const makeCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 5);
 const EMPTY_ROOM_GRACE_MS = 5 * 60 * 1000;
+const ACCOUNT_EMPTY_ROOM_GRACE_MS = 30 * 60 * 1000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistPath = path.resolve(__dirname, "../../client/dist");
 
@@ -142,6 +154,40 @@ function getRoomSummary(room, { revealCode = true } = {}) {
     colors: isLudo ? room.players.map((player) => player.colorName) : undefined,
     createdAt: room.createdAt,
   };
+}
+
+function isFinalRoomStatus(status) {
+  return ["empty", "finished", "stop-finished", "ludo-finished"].includes(status);
+}
+
+function getRoomGraceMs(room) {
+  const hasLinkedAccount = (room.players || []).some((player) => player.accountId);
+  return hasLinkedAccount && !isFinalRoomStatus(room.status) ? ACCOUNT_EMPTY_ROOM_GRACE_MS : EMPTY_ROOM_GRACE_MS;
+}
+
+function getActiveRoomsForAccount(accountId) {
+  if (!accountId) return [];
+  return [...rooms.values()]
+    .filter((room) => !isFinalRoomStatus(room.status))
+    .filter((room) => (room.players || []).some((player) => player.accountId === accountId))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .map((room) => {
+      const player = room.players.find((item) => item.accountId === accountId);
+      return {
+        ...getRoomSummary(room),
+        playerId: player?.id || null,
+        playerName: player?.name || null,
+        recoverableUntil: room.emptySince ? room.emptySince + getRoomGraceMs(room) : null,
+      };
+    });
+}
+
+async function resolveSocketAccount(accountToken) {
+  try {
+    return await getAccountByToken(accountToken);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeQuestion(question) {
@@ -278,6 +324,7 @@ app.get("/health", (_, res) => {
     rooms: rooms.size,
     questions: questionBank.length,
     questionSource,
+    accounts: hasAccountDatabase(),
   });
 });
 
@@ -290,6 +337,52 @@ app.get("/questions/meta", (_, res) => {
 app.get("/app-settings", (_, res) => {
   res.json(appSettings);
 });
+
+async function registerAccountRoute(req, res) {
+  try {
+    const { account, token } = await registerPlayerAccount(req.body);
+    const stats = await getAccountStats(account.id);
+    res.status(201).json(authPayload(account, token, stats, getActiveRoomsForAccount(account.id)));
+  } catch (error) {
+    res.status(error.statusCode || 400).json({ message: error.message || "Nao foi possivel criar a conta." });
+  }
+}
+
+async function loginAccountRoute(req, res) {
+  try {
+    const { account, token } = await loginPlayerAccount(req.body);
+    const stats = await getAccountStats(account.id);
+    res.json(authPayload(account, token, stats, getActiveRoomsForAccount(account.id)));
+  } catch (error) {
+    res.status(error.statusCode || 401).json({ message: error.message || "Login invalido." });
+  }
+}
+
+async function logoutAccountRoute(req, res) {
+  await deletePlayerAccountSession(getAuthToken(req));
+  res.json({ ok: true });
+}
+
+async function getAccountRoute(req, res) {
+  if (!hasAccountDatabase()) {
+    return res.status(503).json({ message: "Contas indisponiveis sem banco de dados." });
+  }
+
+  const account = await getAccountByToken(getAuthToken(req));
+  if (!account) return res.status(401).json({ message: "Sessao invalida." });
+
+  const stats = await getAccountStats(account.id);
+  res.json({
+    account: publicAccount(account),
+    stats,
+    activeRooms: getActiveRoomsForAccount(account.id),
+  });
+}
+
+app.post(["/auth/register", "/api/auth/register"], registerAccountRoute);
+app.post(["/auth/login", "/api/auth/login"], loginAccountRoute);
+app.post(["/auth/logout", "/api/auth/logout"], logoutAccountRoute);
+app.get(["/auth/me", "/api/auth/me"], getAccountRoute);
 
 app.get("/rooms", (_, res) => {
   const lobbyRooms = [...rooms.values()]
@@ -309,7 +402,7 @@ app.get("/rooms", (_, res) => {
 app.get("/rooms/:roomCode/summary", (req, res) => {
   const code = String(req.params.roomCode || "").trim().toUpperCase();
   const room = rooms.get(code);
-  if (!room || room.emptySince) {
+  if (!room || (room.emptySince && Date.now() - room.emptySince > getRoomGraceMs(room))) {
     return res.status(404).json({ message: "Sala nao encontrada." });
   }
   return res.json(getRoomSummary(room));
@@ -503,10 +596,12 @@ function scheduleLudoAutoMove(room, autoMove) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ playerName, playerId, settings } = {}) => {
-    const cleanName = String(playerName || "").trim().slice(0, 24);
+  socket.on("room:create", async ({ playerName, playerId, accountToken, settings } = {}) => {
+    const account = await resolveSocketAccount(accountToken);
+    const cleanName = String(playerName || account?.displayName || "").trim().slice(0, 24);
     if (!cleanName) return emitError(socket, "Informe o nome do jogador.");
     const stablePlayerId = sanitizePlayerId(playerId);
+    const accountId = account?.id || null;
 
     let code = makeCode();
     while (rooms.has(code)) code = makeCode();
@@ -518,6 +613,7 @@ io.on("connection", (socket) => {
       playerName: cleanName,
       playerId: stablePlayerId,
       socketId: socket.id,
+      accountId,
       settings,
       appSettings,
     }) : gameType === "ludo" ? createLudoRoom({
@@ -526,6 +622,7 @@ io.on("connection", (socket) => {
       playerName: cleanName,
       playerId: stablePlayerId,
       socketId: socket.id,
+      accountId,
       settings,
       appSettings,
     }) : createRoom({
@@ -534,6 +631,7 @@ io.on("connection", (socket) => {
       playerName: cleanName,
       playerId: stablePlayerId,
       socketId: socket.id,
+      accountId,
       settings,
       questionBank,
       appSettings,
@@ -542,27 +640,38 @@ io.on("connection", (socket) => {
     rooms.set(code, room);
     socket.join(code);
     void persistRoomCreated(room);
-    socket.emit("room:joined", { roomCode: code, playerId: stablePlayerId });
+    socket.emit("room:joined", { roomCode: code, playerId: stablePlayerId, accountId });
     emitRoom(code);
   });
 
-  socket.on("room:join", ({ roomCode, playerName, playerId } = {}) => {
+  socket.on("room:join", async ({ roomCode, playerName, playerId, accountToken } = {}) => {
     const code = String(roomCode || "").trim().toUpperCase();
-    const cleanName = String(playerName || "").trim().slice(0, 24);
     const stablePlayerId = playerId ? sanitizePlayerId(playerId) : null;
     const room = rooms.get(code);
-    const reconnectingPlayer = stablePlayerId ? room?.players.find((player) => player.id === stablePlayerId) : null;
+    const account = await resolveSocketAccount(accountToken);
+    const accountId = account?.id || null;
+    const accountPlayer = accountId ? room?.players.find((player) => player.accountId === accountId) : null;
+    const browserPlayer = stablePlayerId ? room?.players.find((player) => player.id === stablePlayerId) : null;
+    const canUseBrowserFallback = browserPlayer && (!accountId || !browserPlayer.accountId || browserPlayer.accountId === accountId);
+    const reconnectingPlayer = accountPlayer || (canUseBrowserFallback ? browserPlayer : null);
+    const cleanName = String(playerName || account?.displayName || reconnectingPlayer?.name || "").trim().slice(0, 24);
+    const joinPlayerId = reconnectingPlayer || !browserPlayer ? stablePlayerId : null;
 
     if (!room) return emitError(socket, "Sala nao encontrada.");
     if (!cleanName) return emitError(socket, "Informe o nome do jogador.");
     if (!reconnectingPlayer && !["lobby", "round_finished"].includes(room.status)) return emitError(socket, "Esta partida já começou.");
 
     try {
-      const player = joinRoom(room, { socketId: socket.id, playerName: cleanName, playerId: stablePlayerId });
+      const player = joinRoom(room, { socketId: socket.id, playerName: cleanName, playerId: joinPlayerId, accountId });
       if (room.gameType === "ludo") syncLudoPlayers(room);
       socket.join(code);
       void persistPlayerJoined(room, player);
-      socket.emit("room:joined", { roomCode: code, playerId: player.id, reconnected: Boolean(reconnectingPlayer) });
+      socket.emit("room:joined", {
+        roomCode: code,
+        playerId: player.id,
+        accountId: player.accountId || accountId || null,
+        reconnected: Boolean(reconnectingPlayer),
+      });
       emitRoom(code);
     } catch (error) {
       emitError(socket, error.message);
@@ -664,6 +773,7 @@ io.on("connection", (socket) => {
     if (!room || room.gameType !== "stop") return;
     try {
       submitStopAnswers(room, { socketId: socket.id, answers });
+      void persistGameProgress(room);
       emitRoom(room.code);
     } catch (error) {
       emitError(socket, error.message);
@@ -697,6 +807,7 @@ io.on("connection", (socket) => {
     if (!room || room.gameType !== "stop") return;
     try {
       validateStopAnswer(room, { voterSocketId: socket.id, responseId, playerId, categoryId, valid });
+      void persistGameProgress(room);
       emitRoom(room.code);
     } catch (error) {
       emitError(socket, error.message);
@@ -720,6 +831,7 @@ io.on("connection", (socket) => {
     if (!room || room.gameType !== "stop") return;
     try {
       addStopReviewChatMessage(room, { socketId: socket.id, message });
+      void persistGameProgress(room);
       emitRoom(room.code);
     } catch (error) {
       emitError(socket, error.message);
@@ -840,7 +952,7 @@ io.on("connection", (socket) => {
 
 setInterval(() => {
   for (const room of rooms.values()) {
-    if (room.emptySince && Date.now() - room.emptySince > EMPTY_ROOM_GRACE_MS) {
+    if (room.emptySince && Date.now() - room.emptySince > getRoomGraceMs(room)) {
       void persistRoomEmptied(room);
       rooms.delete(room.code);
       continue;
@@ -896,6 +1008,14 @@ setInterval(() => {
 async function bootstrap() {
   appSettings = await loadAppSettings();
   await refreshQuestionBank();
+  const restoredRooms = await restoreActiveRooms({ maxAgeMs: ACCOUNT_EMPTY_ROOM_GRACE_MS });
+  for (const room of restoredRooms) {
+    if (room.gameType === "ludo") syncLudoPlayers(room);
+    rooms.set(room.code, room);
+  }
+  if (restoredRooms.length) {
+    console.log(`Restauradas ${restoredRooms.length} salas ativas dentro da janela de reconexao.`);
+  }
 
   server.listen(PORT, () => {
     console.log(`MovizzQuizz API running on http://localhost:${PORT}`);

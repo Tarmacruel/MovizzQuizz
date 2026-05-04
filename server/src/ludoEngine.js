@@ -164,7 +164,7 @@ export function syncLudoPlayers(room) {
   refreshPiecesForPlayers(room);
 }
 
-export function createLudoRoom({ code, hostSocketId, playerName, playerId, socketId, settings, appSettings }) {
+export function createLudoRoom({ code, hostSocketId, playerName, playerId, socketId, accountId = null, settings, appSettings }) {
   const id = playerId || socketId;
   const room = {
     code,
@@ -172,7 +172,7 @@ export function createLudoRoom({ code, hostSocketId, playerName, playerId, socke
     hostSocketId: hostSocketId || id,
     status: "lobby",
     settings: sanitizeLudoSettings(settings, appSettings),
-    players: [{ id, socketId, name: playerName, score: 0, connected: true }],
+    players: [{ id, socketId, accountId, name: playerName, score: 0, connected: true }],
     pieces: [],
     currentTurnPlayerId: null,
     turnIndex: 0,
