@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MovizzQuizz</string>
+    <string name="title_activity_main">MovizzQuizz</string>
+    <string name="package_name">br.com.sirel.movizzquizz</string>
+    <string name="custom_url_scheme">br.com.sirel.movizzquizz</string>
+</resources>
