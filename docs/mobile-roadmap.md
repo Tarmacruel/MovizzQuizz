@@ -10,7 +10,7 @@ A publicacao nativa planejada e apenas para Android/Google Play, via Capacitor.
 
 ## Fase 1 - PWA
 
-Status nesta branch:
+Status atual:
 
 - [x] Configurar Vite PWA Plugin
 - [x] Criar manifest via `vite-plugin-pwa`
@@ -22,12 +22,9 @@ Status nesta branch:
 - [x] Configurar cache strategies iniciais
 - [x] Adicionar prompt de instalacao PWA
 - [x] Adicionar fallback offline simples
+- [x] Testar em computador e navegador mobile
 - [ ] Gerar PNGs reais 192x192, 512x512 e maskable a partir dos SVGs
-- [ ] Testar instalacao no Chrome/Android
-- [ ] Testar instalacao no Safari/iOS
-- [ ] Testar modo offline real
-- [ ] Validar Lighthouse PWA
-- [ ] Deploy em producao
+- [ ] Validar Lighthouse PWA formalmente
 
 Observacao: SVG funciona como base visual e manifest inicial, mas para melhor compatibilidade na Play Store/Android e recomendavel gerar PNGs reais.
 
@@ -35,22 +32,24 @@ Observacao: SVG funciona como base visual e manifest inicial, mas para melhor co
 
 ## Fase 2 - Capacitor Android
 
-Escopo revisado:
+Status nesta branch:
 
-- [ ] Instalar Capacitor
-- [ ] Configurar `capacitor.config.json`
-- [ ] Configurar Android package id
-- [ ] Instalar Android platform
-- [ ] Instalar plugins realmente uteis:
-  - Network
-  - Haptics
-  - App
-  - Local Notifications, se for usada notificacao local
-- [ ] Criar splash screen
-- [ ] Configurar icones Android
+- [x] Adicionar dependencias Capacitor no `client/package.json`
+- [x] Configurar `capacitor.config.json`
+- [x] Configurar Android package id: `br.com.sirel.movizzquizz`
+- [x] Adicionar scripts NPM para Android/Capacitor
+- [x] Preparar bridge nativa segura para App, Network, Haptics, StatusBar e SplashScreen
+- [x] Adicionar banner de conexao offline para PWA/app nativo
+- [ ] Rodar `npm install`
+- [ ] Rodar `npm run build`
+- [ ] Gerar plataforma Android com `npm run android:add`
+- [ ] Sincronizar com `npm run android:sync`
+- [ ] Abrir Android Studio com `npm run android:open`
+- [ ] Criar/validar splash screen real
+- [ ] Configurar icones Android PNG reais
 - [ ] Build APK debug
-- [ ] Build APK release
-- [ ] Assinar APK/AAB com keystore
+- [ ] Build AAB release
+- [ ] Assinar AAB com keystore
 - [ ] Publicar na Google Play Store
 
 Fora do escopo atual:
@@ -77,7 +76,7 @@ Compatibilidade Apple sera pelo navegador/PWA.
 
 ---
 
-## Comandos recomendados
+## Comandos recomendados - PWA
 
 ```bash
 cd client
@@ -86,12 +85,23 @@ npm run build
 npm run preview
 ```
 
-Teste PWA:
+## Comandos recomendados - Android/Capacitor
 
-1. Abrir o app em HTTPS.
-2. Verificar aba Application no DevTools.
-3. Confirmar Manifest.
-4. Confirmar Service Worker ativo.
-5. Instalar no Chrome/Android.
-6. Testar offline parcial.
+```bash
+cd client
+npm install
+npm run build
+npm run android:add
+npm run android:sync
+npm run android:open
+```
+
+No Android Studio:
+
+1. Aguardar Gradle Sync.
+2. Selecionar um emulador ou celular fisico.
+3. Rodar o app em debug.
+4. Validar login, visitante, criacao de sala e entrada por codigo.
+5. Gerar APK debug.
+6. Depois configurar assinatura e gerar AAB release para Play Store.
 
