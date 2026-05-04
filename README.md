@@ -344,25 +344,42 @@ O Vite está configurado com `allowedHosts` para `quizz.sirel.com.br` e proxy de
 MovizzQuizz/
 ├── client/
 │   ├── src/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── styles.css
+│   │   ├── App.jsx                # shell principal, lobby e fluxos de sala
+│   │   ├── LudoBoard.jsx          # renderização/interação do tabuleiro Ludo
+│   │   ├── ludoBoardGeometry.js   # geometria dos tabuleiros (4, 5 e 6 jogadores)
+│   │   ├── styles.css             # estilos globais da aplicação
+│   │   └── main.jsx               # bootstrap React
+│   ├── public/
+│   │   └── favicon.svg
 │   ├── .env.example
 │   ├── index.html
+│   ├── vite.config.js
 │   └── package.json
 ├── server/
-│   ├── data/questions.js
+│   ├── src/
+│   │   ├── index.js               # API HTTP + Socket.IO
+│   │   ├── db.js                  # cliente Prisma e acesso a banco
+│   │   ├── persistence.js         # leitura/escrita de salas e sessões
+│   │   ├── gameEngine.js          # engine do quiz
+│   │   ├── stopEngine.js          # engine do Stop / Adedanha
+│   │   ├── ludoEngine.js          # engine do Ludo
+│   │   ├── playerAccounts.js      # contas de jogador e reconexão
+│   │   ├── security.js            # validações de segurança e identidade
+│   │   └── appSettings.js         # configurações globais da aplicação
 │   ├── prisma/
 │   │   ├── schema.prisma
 │   │   └── seed.js
-│   ├── src/
-│   │   ├── db.js
-│   │   ├── gameEngine.js
-│   │   ├── index.js
-│   │   ├── persistence.js
-│   │   └── stopEngine.js
+│   ├── data/
+│   │   └── questions.js           # fallback local de perguntas
+│   ├── test/
+│   │   ├── ludoEngine.test.js
+│   │   └── accountReconnect.test.js
 │   ├── .env.example
 │   └── package.json
+├── iniciar.bat
+├── parar.bat
+├── resetar.bat
+├── atualizar.bat
 ├── .env.example
 ├── package.json
 └── README.md
