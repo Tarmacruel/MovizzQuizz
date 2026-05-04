@@ -6,9 +6,22 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mobile:build": "npm run build && npx cap sync android",
+    "android:add": "npx cap add android",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:copy": "npm run build && npx cap copy android"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/haptics": "^6.0.1",
+    "@capacitor/local-notifications": "^6.1.1",
+    "@capacitor/network": "^6.0.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.2",
     "vite-plugin-pwa": "^0.21.1",
@@ -18,5 +31,7 @@
     "socket.io-client": "^4.7.5",
     "lucide-react": "^0.468.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
 }
