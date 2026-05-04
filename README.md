@@ -2,6 +2,16 @@
 
 Plataforma multiplayer de jogos de sala. O MovizzQuizz preserva o quiz de filmes, séries e cultura pop e adiciona os modos **Stop / Adedanha** e **Ludo**, com salas por código, tempo real e ranking.
 
+## Novidades das últimas 72h
+
+Atualizações mais recentes implementadas no projeto:
+
+- **Contas de jogador e reconexão robusta:** cada jogador pode vincular-se a uma conta para reencontrar partidas em andamento com mais confiabilidade, inclusive no Ludo e no Stop, mantendo continuidade após desconexões.
+- **Ludo com turnos automáticos por tempo:** o servidor agora processa timeout de turno automaticamente para evitar partidas travadas quando alguém demora para jogar.
+- **Jogada automática quando há apenas uma opção válida:** após rolar o dado, se existir apenas uma peça jogável, o movimento é executado automaticamente para acelerar a partida.
+- **Aprimoramentos de segurança e persistência:** reforços no backend para identificação de jogador, reconexão e consistência de sessão entre cliente/servidor.
+- **Cobertura de testes ampliada:** novos testes para reconexão de conta e para regras de turno/timeout do Ludo.
+
 ## Stack
 
 - **Frontend:** React + Vite + Socket.IO Client
