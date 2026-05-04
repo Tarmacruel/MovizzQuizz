@@ -7,37 +7,107 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: [
+        'favicon.svg',
+        'pwa/icon.svg',
+        'pwa/maskable-icon.svg',
+        'pwa/apple-touch-icon.svg',
+        'pwa/offline.html'
+      ],
       manifest: {
+        id: '/',
         name: 'MovizzQuizz',
         short_name: 'MovizzQuizz',
         description: 'Quiz, Stop e Ludo online para jogar com amigos.',
         theme_color: '#070713',
         background_color: '#070713',
         display: 'standalone',
+        display_override: ['window-controls-overlay', 'standalone', 'browser'],
         orientation: 'portrait',
         scope: '/',
-        start_url: '/',
+        start_url: '/?source=pwa',
+        categories: ['games', 'entertainment'],
+        lang: 'pt-BR',
         icons: [
           {
-            src: '/favicon.svg',
-            sizes: 'any',
+            src: '/pwa/icon.svg',
+            sizes: '192x192',
             type: 'image/svg+xml',
-            purpose: 'any maskable'
+            purpose: 'any'
+          },
+          {
+            src: '/pwa/icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any'
+          },
+          {
+            src: '/pwa/maskable-icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'maskable'
+          }
+        ],
+        screenshots: [
+          {
+            src: '/pwa/screenshot-mobile.svg',
+            sizes: '1080x1920',
+            type: 'image/svg+xml',
+            form_factor: 'narrow',
+            label: 'MovizzQuizz no celular'
+          },
+          {
+            src: '/pwa/screenshot-desktop.svg',
+            sizes: '1600x900',
+            type: 'image/svg+xml',
+            form_factor: 'wide',
+            label: 'MovizzQuizz no desktop'
           }
         ]
       },
       workbox: {
+        navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'movizz-navigation-cache',
+              networkTimeoutSeconds: 3,
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/rooms') || url.pathname.startsWith('/questions') || url.pathname.startsWith('/app-settings'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'movizz-api-cache',
+              networkTimeoutSeconds: 4,
               expiration: {
-                maxEntries: 80,
+                maxEntries: 120,
                 maxAgeSeconds: 60 * 60 * 12
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: ({ request }) => ['image', 'font', 'style', 'script'].includes(request.destination),
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'movizz-static-cache',
+              expiration: {
+                maxEntries: 150,
+                maxAgeSeconds: 60 * 60 * 24 * 14
               },
               cacheableResponse: {
                 statuses: [0, 200]
