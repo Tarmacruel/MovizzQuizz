@@ -8,6 +8,7 @@ import './styles.css';
 import './clean-lobby.css';
 import './auth-first.css';
 import './pwa-mobile.css';
+import './ludo-interactions.css';
 
 registerSW({
   immediate: true,
