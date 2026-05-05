@@ -1,0 +1,134 @@
+.ludo-legal-move-hints {
+  pointer-events: none;
+}
+
+.ludo-move-line {
+  stroke: var(--player-color, #a5b4fc);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 8 7;
+  opacity: .68;
+  filter: drop-shadow(0 0 6px rgba(255,255,255,.18));
+  animation: ludo-target-dash 1.35s linear infinite;
+}
+
+.ludo-legal-move-hints.sixPlayers .ludo-move-line {
+  stroke-width: 2.35;
+  opacity: .62;
+}
+
+.ludo-target-pulse {
+  fill: none;
+  stroke: var(--player-color, #a5b4fc);
+  stroke-width: 3.4;
+  opacity: .74;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ludo-target-pulse 1.2s ease-in-out infinite;
+}
+
+.ludo-target-dot {
+  fill: color-mix(in srgb, var(--player-color, #a5b4fc) 72%, white 28%);
+  stroke: rgba(255,255,255,.92);
+  stroke-width: 2.6;
+  filter: drop-shadow(0 8px 10px rgba(0,0,0,.32));
+}
+
+.ludo-target-label {
+  fill: #07101f;
+  font-size: 11px;
+  font-weight: 950;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ludo-board.classic .ludo-target-label {
+  font-size: 13px;
+}
+
+.ludo-piece {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.ludo-piece:not(.legal) {
+  pointer-events: none;
+}
+
+.ludo-piece.legal {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ludo-piece-hit-area {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+
+.ludo-piece.legal .ludo-piece-hit-area {
+  stroke: rgba(255,255,255,.08);
+  stroke-width: 1;
+}
+
+.ludo-piece.legal.stacked .ludo-piece-ring {
+  stroke-width: 4.6;
+}
+
+.ludo-piece.stacked .ludo-piece-body {
+  filter: drop-shadow(0 10px 10px rgba(0,0,0,.38));
+}
+
+.ludo-stack-count {
+  fill: #fff;
+  stroke: rgba(0,0,0,.75);
+  stroke-width: 3;
+  paint-order: stroke;
+  font-size: 8px;
+  font-weight: 950;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ludo-board.classic .ludo-stack-count {
+  font-size: 10px;
+}
+
+.ludo-piece.legal:hover .ludo-piece-body,
+.ludo-piece.legal:focus .ludo-piece-body {
+  filter: drop-shadow(0 0 10px var(--player-color, #a5b4fc)) drop-shadow(0 12px 12px rgba(0,0,0,.36));
+}
+
+.ludo-piece.legal:hover .ludo-piece-ring,
+.ludo-piece.legal:focus .ludo-piece-ring {
+  stroke: rgba(255,255,255,.95);
+}
+
+@keyframes ludo-target-dash {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -30; }
+}
+
+@keyframes ludo-target-pulse {
+  0%, 100% { transform: scale(.88); opacity: .5; }
+  50% { transform: scale(1.12); opacity: .92; }
+}
+
+@media (max-width: 760px) {
+  .ludo-move-line {
+    stroke-width: 3.8;
+    opacity: .76;
+  }
+
+  .ludo-legal-move-hints.sixPlayers .ludo-move-line {
+    stroke-width: 2.9;
+  }
+
+  .ludo-target-pulse {
+    stroke-width: 4;
+  }
+
+  .ludo-piece.legal .ludo-piece-hit-area {
+    stroke-width: 2;
+  }
+}
