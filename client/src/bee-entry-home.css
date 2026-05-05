@@ -1,0 +1,284 @@
+.auth-first-page::before,
+.new-home-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(247, 201, 72, 0.18), transparent 32%),
+    radial-gradient(circle at 84% 16%, rgba(139, 92, 246, 0.20), transparent 34%),
+    radial-gradient(circle at 78% 90%, rgba(236, 72, 153, 0.10), transparent 32%);
+}
+
+.auth-first-page::after,
+.new-home-page::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .26;
+  background-image:
+    linear-gradient(30deg, transparent 0 42%, rgba(247, 201, 72, .12) 42% 43%, transparent 43% 100%),
+    linear-gradient(150deg, transparent 0 42%, rgba(139, 92, 246, .12) 42% 43%, transparent 43% 100%);
+  background-size: 84px 84px;
+  mask-image: radial-gradient(circle at 50% 20%, black, transparent 76%);
+}
+
+.auth-first-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-first-card::before {
+  content: "";
+  position: absolute;
+  right: -90px;
+  top: -110px;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(247, 201, 72, .28), transparent 68%);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+.auth-first-card::after {
+  content: "ZZ";
+  position: absolute;
+  right: 26px;
+  top: 24px;
+  color: rgba(247, 201, 72, .16);
+  font-size: clamp(58px, 8vw, 116px);
+  font-weight: 1000;
+  letter-spacing: -.12em;
+  transform: rotate(-10deg);
+  pointer-events: none;
+}
+
+.auth-brand-block {
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-brand-block::before {
+  content: "";
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: min(190px, 38vw);
+  aspect-ratio: 1;
+  border-radius: 40px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 224, 138, .08), transparent 63%),
+    url('/brand/bee/icons/icon.svg') center / contain no-repeat;
+  opacity: .72;
+  filter: drop-shadow(0 18px 36px rgba(247, 201, 72, .20));
+}
+
+.auth-brand-block h1,
+.new-home-hero h1,
+.lazy-app-loading h1 {
+  text-shadow:
+    0 0 34px rgba(247, 201, 72, .10),
+    0 0 48px rgba(139, 92, 246, .12);
+}
+
+.auth-brand-block p::after,
+.new-home-hero p::after {
+  content: " Play. Think. Buzz.";
+  color: var(--bee-gold-soft);
+  font-weight: 900;
+}
+
+.access-choice {
+  position: relative;
+  overflow: hidden;
+}
+
+.access-choice::after,
+.game-mode-card::after,
+.public-room-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent, rgba(255, 224, 138, .08), transparent);
+  opacity: 0;
+  transform: translateX(-100%);
+  transition: opacity .25s ease, transform .45s ease;
+}
+
+.access-choice:hover::after,
+.access-choice.active::after,
+.game-mode-card:hover::after,
+.game-mode-card.active::after,
+.public-room-row:hover::after {
+  opacity: 1;
+  transform: translateX(100%);
+}
+
+.game-mode-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.game-mode-card::before {
+  content: "";
+  position: absolute;
+  right: -34px;
+  bottom: -34px;
+  width: 118px;
+  height: 118px;
+  border-radius: 34px;
+  background: radial-gradient(circle, rgba(247, 201, 72, .16), transparent 68%);
+  z-index: -1;
+}
+
+.game-mode-card span {
+  width: 50px;
+  height: 50px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(247, 201, 72, .28);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(247, 201, 72, .14), rgba(139, 92, 246, .12)),
+    rgba(7, 7, 19, .72);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 22px rgba(0,0,0,.22);
+}
+
+.game-mode-card strong,
+.public-room-row strong,
+.new-home-brand strong {
+  color: var(--bee-text);
+}
+
+.game-mode-card.active strong,
+.public-room-row:hover strong {
+  color: var(--bee-gold-soft);
+}
+
+.home-actions-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.home-actions-card::before {
+  content: "";
+  position: absolute;
+  right: 16px;
+  top: 14px;
+  width: 72px;
+  height: 72px;
+  border-radius: 24px;
+  background: url('/brand/bee/icons/maskable-icon.svg') center / contain no-repeat;
+  opacity: .22;
+  pointer-events: none;
+}
+
+.public-rooms-list p {
+  min-height: 118px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(247, 201, 72, .24);
+  border-radius: 20px;
+  padding: 18px;
+  color: var(--bee-muted) !important;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(247, 201, 72, .08), transparent 58%),
+    rgba(7, 7, 19, .38);
+}
+
+.public-rooms-list p::before {
+  content: "🐝";
+  display: block;
+  margin-bottom: 8px;
+  font-size: 28px;
+}
+
+.auth-primary,
+.auth-secondary,
+.access-choice,
+.game-mode-card,
+.public-room-row {
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.auth-primary:hover,
+.auth-secondary:hover,
+.access-choice:hover,
+.game-mode-card:hover,
+.public-room-row:hover {
+  transform: translateY(-1px);
+}
+
+.auth-primary:active,
+.auth-secondary:active,
+.access-choice:active,
+.game-mode-card:active,
+.public-room-row:active {
+  transform: translateY(0) scale(.99);
+}
+
+.auth-form label,
+.settings-panel label,
+.join-panel label {
+  color: rgba(255, 224, 138, .86) !important;
+}
+
+.new-home-topbar {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 20;
+  padding: 8px;
+  border: 1px solid rgba(247, 201, 72, .10);
+  border-radius: 22px;
+  background: rgba(7, 7, 19, .42);
+  backdrop-filter: blur(18px);
+}
+
+.new-home-brand::after {
+  content: "Buzz Hub";
+  margin-left: 8px;
+  color: var(--bee-gold-soft);
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .82;
+}
+
+@media (max-width: 920px) {
+  .auth-brand-block::before {
+    width: 128px;
+    right: 14px;
+    bottom: 14px;
+    opacity: .38;
+  }
+
+  .new-home-topbar {
+    position: relative;
+    top: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-first-card::after {
+    right: 14px;
+    top: 12px;
+    font-size: 52px;
+  }
+
+  .new-home-brand::after {
+    display: none;
+  }
+
+  .game-mode-card span {
+    width: 46px;
+    height: 46px;
+  }
+}
