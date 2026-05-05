@@ -123,7 +123,11 @@ function extractRoomCode(payload = {}) {
     || payload.room?.code
     || payload.room?.id
     || payload.createdRoom?.code
-    || payload.createdRoom?.roomCode;
+    || payload.createdRoom?.roomCode
+    || payload.state?.roomCode
+    || payload.state?.code
+    || payload.state?.room?.code
+    || payload.state?.room?.roomCode;
   return String(code || "").trim().toUpperCase();
 }
 
@@ -132,7 +136,22 @@ function extractJoinedPlayerId(payload = {}, fallbackPlayerId) {
     || payload.player?.id
     || payload.currentPlayer?.id
     || payload.joinedPlayer?.id
+    || payload.me?.id
     || fallbackPlayerId;
+}
+
+function roomCodeOf(room = {}) {
+  return String(room.code || room.roomCode || room.id || "").trim().toUpperCase();
+}
+
+async function fetchPublicRooms() {
+  try {
+    const response = await fetch(`${API_URL}/rooms`, { cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    return Array.isArray(payload.publicRooms) ? payload.publicRooms : [];
+  } catch {
+    return [];
+  }
 }
 
 export default function AuthFirstEntry() {
@@ -176,13 +195,12 @@ export default function AuthFirstEntry() {
   }, [accessSession, accountSession, visitorSession]);
 
   useEffect(() => {
-    if (handoffToApp || !activeIdentity) return undefined;
+    if (handoffToApp || !activeIdentity || pendingRoomAction) return undefined;
     let active = true;
-    fetch(`${API_URL}/rooms`)
-      .then((response) => response.json())
-      .then((payload) => {
+    fetchPublicRooms()
+      .then((publicRooms) => {
         if (!active) return;
-        setRooms(Array.isArray(payload.publicRooms) ? payload.publicRooms : []);
+        setRooms(publicRooms);
       })
       .catch(() => {
         if (active) setRooms([]);
@@ -190,7 +208,7 @@ export default function AuthFirstEntry() {
     return () => {
       active = false;
     };
-  }, [activeIdentity, handoffToApp]);
+  }, [activeIdentity, handoffToApp, pendingRoomAction]);
 
   function completeRoomHandoff(payload = {}) {
     const roomCode = extractRoomCode(payload) || joinCode.trim().toUpperCase();
@@ -217,6 +235,11 @@ export default function AuthFirstEntry() {
       completeRoomHandoff(payload);
     }
 
+    function handleRoomUpdate(payload = {}) {
+      if (!pendingRoomAction) return;
+      completeRoomHandoff(payload);
+    }
+
     function handleError(payload = {}) {
       setLoading(false);
       setPendingRoomAction("");
@@ -232,16 +255,18 @@ export default function AuthFirstEntry() {
     socket.on("room:joined", handleJoined);
     socket.on("room:created", handleJoined);
     socket.on("room:ready", handleJoined);
+    socket.on("room:update", handleRoomUpdate);
     socket.on("room:error", handleError);
     socket.on("connect_error", handleConnectError);
     return () => {
       socket.off("room:joined", handleJoined);
       socket.off("room:created", handleJoined);
       socket.off("room:ready", handleJoined);
+      socket.off("room:update", handleRoomUpdate);
       socket.off("room:error", handleError);
       socket.off("connect_error", handleConnectError);
     };
-  }, [activeIdentity, handoffToApp, joinCode, playerId, socket]);
+  }, [activeIdentity, handoffToApp, joinCode, pendingRoomAction, playerId, socket]);
 
   useEffect(() => {
     if (!loading || !pendingRoomAction) return undefined;
@@ -347,11 +372,22 @@ export default function AuthFirstEntry() {
     setHandoffToApp(false);
   }
 
-  function createRoom() {
+  async function createRoom() {
     if (!activeIdentity || loading || pendingRoomAction) return;
     setLoading(true);
     setPendingRoomAction("create");
     setMessage("");
+
+    const existingRooms = await fetchPublicRooms();
+    const existingCodes = new Set(existingRooms.map(roomCodeOf).filter(Boolean));
+    let completed = false;
+
+    const finish = (payload = {}) => {
+      if (completed) return true;
+      const ok = completeRoomHandoff(payload);
+      if (ok) completed = true;
+      return ok;
+    };
 
     if (!socket.connected) socket.connect();
 
@@ -361,8 +397,26 @@ export default function AuthFirstEntry() {
       accountToken: activeIdentity.token || "",
       settings,
     }, (payload = {}) => {
-      completeRoomHandoff(payload);
+      finish(payload);
     });
+
+    window.setTimeout(async () => {
+      if (completed) return;
+      const publicRooms = await fetchPublicRooms();
+      setRooms(publicRooms);
+      const newRoom = publicRooms.find((room) => {
+        const code = roomCodeOf(room);
+        if (!code || existingCodes.has(code)) return false;
+        if (room.gameType && room.gameType !== settings.gameType) return false;
+        if (room.maxPlayers && Number(room.maxPlayers) !== Number(settings.maxPlayers)) return false;
+        return true;
+      }) || publicRooms.find((room) => {
+        const code = roomCodeOf(room);
+        return code && !existingCodes.has(code);
+      });
+
+      if (newRoom) finish({ roomCode: roomCodeOf(newRoom) });
+    }, 900);
   }
 
   function joinRoom(event) {
