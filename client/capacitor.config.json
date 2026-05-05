@@ -4,6 +4,7 @@
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
+    "url": "https://quizz.sirel.com.br",
     "androidScheme": "https",
     "cleartext": false,
     "allowNavigation": [
