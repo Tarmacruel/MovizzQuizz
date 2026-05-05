@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register';
 import AuthFirstEntry from './AuthFirstEntry.jsx';
 import PWAInstallPrompt from './components/PWAInstallPrompt.jsx';
 import MobileNativeBridge from './components/MobileNativeBridge.jsx';
+import LegacyEntryGuard from './components/LegacyEntryGuard.jsx';
 import './styles.css';
 import './clean-lobby.css';
 import './auth-first.css';
@@ -25,5 +26,6 @@ createRoot(document.getElementById('root')).render(
     <AuthFirstEntry />
     <PWAInstallPrompt />
     <MobileNativeBridge />
+    <LegacyEntryGuard />
   </React.StrictMode>
 );
