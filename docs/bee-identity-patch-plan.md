@@ -81,7 +81,7 @@ Este documento organiza:
 | Avatar padrão SVG | `client/public/brand/bee/avatars/default-user.svg` | `[x]` |
 | Avatar visitante SVG | `client/public/brand/bee/avatars/guest-user.svg` | `[x]` |
 | Tema global CSS | `client/src/bee-theme.css` | `[x]` |
-| Script de exportação auxiliar | `client/scripts/export-bee-assets.mjs` | `[x]` |
+| Script de exportação PNG | `client/scripts/export-bee-assets.mjs` | `[x]` |
 
 ### 3.3 Ativos alternativos em espera
 
@@ -116,15 +116,16 @@ Criar a base visual global sem reescrever todas as telas de uma vez. O Patch 1 d
 - [x] Adicionar fonte SVG para ícone principal
 - [x] Adicionar fonte SVG para ícone maskable
 - [x] Adicionar ícone monocromático para notificação
-- [ ] Exportar `icon-192x192.png`
-- [ ] Exportar `icon-512x512.png`
-- [ ] Exportar `icon-maskable-512x512.png`
-- [ ] Exportar `apple-touch-icon-180x180.png`
-- [ ] Exportar `favicon-32x32.png`
-- [ ] Exportar `favicon-16x16.png`
-- [ ] Exportar `android-notification-monochrome.png` ou SVG equivalente
-- [ ] Exportar `adaptive-icon-foreground.png`
-- [ ] Exportar `adaptive-icon-background.png`
+- [x] Criar pipeline real de exportação PNG via `sharp`
+- [ ] Exportar `icon-192x192.png` com `npm run assets:bee`
+- [ ] Exportar `icon-512x512.png` com `npm run assets:bee`
+- [ ] Exportar `icon-maskable-512x512.png` com `npm run assets:bee`
+- [ ] Exportar `apple-touch-icon-180x180.png` com `npm run assets:bee`
+- [ ] Exportar `favicon-32x32.png` com `npm run assets:bee`
+- [ ] Exportar `favicon-16x16.png` com `npm run assets:bee`
+- [ ] Exportar `android-notification-monochrome.png` com `npm run assets:bee`
+- [ ] Exportar `adaptive-icon-foreground.png` com `npm run assets:bee`
+- [ ] Exportar `adaptive-icon-background.png` com `npm run assets:bee`
 
 #### 4.2 Estrutura de arquivos sugerida
 
@@ -141,6 +142,7 @@ client/public/brand/bee/
     favicon-32x32.png
     favicon-16x16.png
     android-notification-monochrome.png
+  android/
     adaptive-icon-foreground.png
     adaptive-icon-background.png
   backgrounds/
@@ -153,8 +155,14 @@ client/public/brand/bee/
   avatars/
     default-user.svg
     guest-user.svg
-    default-user.png
-    guest-user.png
+    default-user-64x64.png
+    default-user-128x128.png
+    default-user-256x256.png
+    default-user-512x512.png
+    guest-user-64x64.png
+    guest-user-128x128.png
+    guest-user-256x256.png
+    guest-user-512x512.png
     admin-badge.png
   ui/
     panel-glass.png
@@ -182,6 +190,7 @@ client/public/brand/bee/
 - [x] Atualizar botões globais `.auth-primary`, `.auth-secondary`, `.primary`, `.secondary`
 - [x] Atualizar cards globais e painéis principais
 - [x] Atualizar estados `disabled`, `focus`, `hover`, `loading` de forma inicial
+- [x] Aplicar avatar bee inicial na home/perfil via CSS
 
 #### 4.4 Manifest/PWA
 
@@ -217,7 +226,7 @@ Aplicar a nova identidade nas telas mais vistas antes de mexer nos jogos.
 - [ ] Reestilizar tela de login/registro
 - [ ] Reestilizar opção visitante/admin
 - [ ] Reestilizar home/lobby pós-login
-- [ ] Aplicar avatar padrão bee
+- [x] Aplicar avatar padrão bee inicial na home/perfil
 - [ ] Aplicar badge admin e visitante
 - [ ] Reestilizar cards de modo de jogo
 - [ ] Reestilizar salas públicas, privadas e recuperáveis
@@ -337,12 +346,14 @@ Concluir a migração visual com polimento técnico.
 
 ## 9. Ordem recomendada de execução imediata
 
-1. **Validar o Patch 1 visual global no navegador e APK**
-2. **Exportar PNGs finais a partir dos SVGs canônicos**
-3. **Atualizar manifest/PWA para PNGs reais**
-4. **Aplicar tema refinado em Auth/Home**
-5. **Validar build web e Android**
-6. **Só depois aplicar telas internas de jogo**
+1. **Rodar `npm install` para instalar `sharp`**
+2. **Rodar `npm run assets:bee` para exportar PNGs finais**
+3. **Validar visualmente os PNGs exportados**
+4. **Atualizar manifest/PWA para PNGs reais**
+5. **Atualizar `index.html` para favicons reais**
+6. **Aplicar tema refinado em Auth/Home**
+7. **Validar build web e Android**
+8. **Só depois aplicar telas internas de jogo**
 
 ---
 
@@ -358,7 +369,7 @@ Este arquivo deve ser atualizado a cada PR visual.
 - [x] Definidos critérios de aceite por patch
 - [x] Definida ordem recomendada de execução
 
-### Atualizações realizadas neste PR — `feat/bee-identity-assets-pack`
+### Atualizações realizadas no PR — `feat/bee-identity-assets-pack`
 
 - [x] Adicionado ícone principal SVG
 - [x] Adicionado ícone maskable SVG
@@ -372,14 +383,26 @@ Este arquivo deve ser atualizado a cada PR visual.
 - [x] Atualizado manifest PWA para usar assets bee SVG
 - [x] Criado script auxiliar de exportação de assets
 
+### Atualizações realizadas neste PR — `feat/bee-identity-png-export-and-avatars`
+
+- [x] Adicionado `sharp` como dependência de desenvolvimento
+- [x] Adicionado script NPM `assets:bee`
+- [x] Transformado `export-bee-assets.mjs` em exportador real de PNGs
+- [x] Incluída geração de ícones PWA/Android
+- [x] Incluída geração de favicons
+- [x] Incluída geração de adaptive icons Android
+- [x] Incluída geração de avatares em múltiplos tamanhos
+- [x] Aplicado avatar bee inicial na home/perfil por CSS
+
 ### Próximo PR sugerido
 
-**`feat/bee-identity-png-exports`**
+**`feat/bee-identity-pwa-png-manifest`**
 
 Escopo:
 
-- gerar PNGs finais a partir dos SVGs;
+- executar `npm run assets:bee` localmente;
+- revisar os PNGs exportados;
+- versionar PNGs finais;
 - atualizar manifest/PWA para PNGs reais;
 - atualizar `index.html` para favicons reais;
-- criar badge admin em formato seguro;
-- aplicar avatar padrão no perfil/home.
+- validar instalação PWA/Android.
