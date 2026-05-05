@@ -9,9 +9,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: [
         'favicon.svg',
-        'pwa/icon.svg',
-        'pwa/maskable-icon.svg',
-        'pwa/apple-touch-icon.svg',
+        'brand/bee/icons/icon.svg',
+        'brand/bee/icons/maskable-icon.svg',
+        'brand/bee/icons/notification-monochrome.svg',
+        'brand/bee/backgrounds/honeycomb-bg.svg',
+        'brand/bee/backgrounds/honeycomb-mobile-bg.svg',
         'pwa/offline.html'
       ],
       manifest: {
@@ -30,19 +32,19 @@ export default defineConfig({
         lang: 'pt-BR',
         icons: [
           {
-            src: '/pwa/icon.svg',
+            src: '/brand/bee/icons/icon.svg',
             sizes: '192x192',
             type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/pwa/icon.svg',
+            src: '/brand/bee/icons/icon.svg',
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/pwa/maskable-icon.svg',
+            src: '/brand/bee/icons/maskable-icon.svg',
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'maskable'
