@@ -11,6 +11,7 @@ import './auth-first.css';
 import './pwa-mobile.css';
 import './ludo-interactions.css';
 import './bee-theme.css';
+import './bee-entry-home.css';
 
 registerSW({
   immediate: true,
