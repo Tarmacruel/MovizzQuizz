@@ -9,9 +9,11 @@ import {
   getCenterTrianglePath,
   getHexagonPoints,
   getHomeSlotPoints,
+  getLanePoint,
   getLudoBoardConfig,
   getLudoBoardSlots,
   getLudoBoardVariant,
+  getLudoHomeEntryProgress,
   getLudoPiecePoint,
   getLudoTrackPoint,
   getSixBaseArea,
@@ -47,6 +49,83 @@ function getStarPoints(cx, cy, outerRadius = 9.5, innerRadius = 4.2) {
     const radians = angle * (Math.PI / 180);
     return `${cx + Math.cos(radians) * radius},${cy + Math.sin(radians) * radius}`;
   }).join(" ");
+}
+
+function getStackOffset(index = 0, total = 1, variant = "sixPlayers") {
+  if (total <= 1) return { x: 0, y: 0 };
+
+  const radius = variant === "classic"
+    ? total <= 2 ? 11 : total <= 4 ? 13.5 : 16
+    : total <= 2 ? 7.5 : total <= 4 ? 9.5 : 12;
+  const angle = -90 + index * (360 / total);
+  const radians = angle * (Math.PI / 180);
+
+  return {
+    x: Math.cos(radians) * radius,
+    y: Math.sin(radians) * radius,
+  };
+}
+
+function getPieceStackKey(piece, players, variant) {
+  const player = players.find((item) => item.id === piece.playerId) || {};
+  const config = getLudoBoardConfig(variant);
+  const homeEntryProgress = getLudoHomeEntryProgress(variant);
+
+  if (piece.state === "home" || piece.progress < 0) return `home:${piece.playerId}:${piece.pieceIndex}`;
+  if (piece.state === "finished" || piece.progress >= config.finishProgress) return `finished:${piece.playerId}:${piece.pieceIndex}`;
+  if (piece.progress >= homeEntryProgress) return `lane:${piece.playerId}:${piece.progress}`;
+  if (Number.isFinite(piece.absoluteCell)) return `track:${piece.absoluteCell}`;
+
+  return `piece:${player.id || piece.playerId}:${piece.id}`;
+}
+
+function buildPieceStackMeta(pieces, players, variant, legalPieceIds) {
+  const groups = new Map();
+
+  pieces.forEach((piece) => {
+    const key = getPieceStackKey(piece, players, variant);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(piece);
+  });
+
+  const meta = new Map();
+
+  groups.forEach((group) => {
+    const ordered = [...group].sort((a, b) => {
+      const legalDiff = Number(legalPieceIds.has(a.id)) - Number(legalPieceIds.has(b.id));
+      if (legalDiff) return legalDiff;
+      return (a.colorIndex || 0) - (b.colorIndex || 0) || (a.pieceIndex || 0) - (b.pieceIndex || 0);
+    });
+
+    ordered.forEach((piece, index) => {
+      meta.set(piece.id, {
+        index,
+        total: ordered.length,
+        offset: getStackOffset(index, ordered.length, variant),
+      });
+    });
+  });
+
+  return meta;
+}
+
+function getMoveTargetPoint(move, pieces, players, variant) {
+  if (Number.isFinite(move?.targetCell)) return getLudoTrackPoint(move.targetCell, variant);
+
+  const piece = pieces.find((item) => item.id === move?.pieceId);
+  const player = players.find((item) => item.id === piece?.playerId);
+  if (!piece || !player) return LUDO_CENTER;
+
+  const config = getLudoBoardConfig(variant);
+  if (move?.finishes || move?.to >= config.finishProgress) return LUDO_CENTER;
+
+  const homeEntryProgress = getLudoHomeEntryProgress(variant);
+  if (Number.isFinite(move?.to) && move.to >= homeEntryProgress) {
+    const laneIndex = Math.min(config.homeStretch - 1, Math.max(0, move.to - homeEntryProgress));
+    return getLanePoint(player, variant, laneIndex);
+  }
+
+  return LUDO_CENTER;
 }
 
 function renderDefs() {
@@ -118,6 +197,30 @@ function renderTrackCells({ variant, slots, safeCells, legalTargets, trackSize }
       />}
     </g>;
   });
+}
+
+function renderLegalMoveHints({ legalMoves, pieces, players, variant }) {
+  if (!legalMoves?.length) return null;
+
+  return <g className={cx("ludo-legal-move-hints", variant)} aria-hidden="true">
+    {legalMoves.map((move) => {
+      const piece = pieces.find((item) => item.id === move.pieceId);
+      const player = players.find((item) => item.id === piece?.playerId);
+      if (!piece || !player) return null;
+
+      const from = getLudoPiecePoint(piece, players, variant);
+      const target = getMoveTargetPoint(move, pieces, players, variant);
+      const color = player.colorHex || LUDO_COLORS[piece.color] || "#fff";
+      const targetRadius = variant === "classic" ? 15.5 : 10.5;
+
+      return <g key={`${move.pieceId}-${move.to}`} className="ludo-move-hint" style={{ "--player-color": color }}>
+        <line x1={from.x} y1={from.y} x2={target.x} y2={target.y} className="ludo-move-line" />
+        <circle cx={target.x} cy={target.y} r={targetRadius + 7} className="ludo-target-pulse" />
+        <circle cx={target.x} cy={target.y} r={targetRadius} className="ludo-target-dot" />
+        <text x={target.x} y={target.y + 4} textAnchor="middle" className="ludo-target-label">{piece.pieceIndex + 1}</text>
+      </g>;
+    })}
+  </g>;
 }
 
 function renderCenter(slots, variant) {
@@ -239,8 +342,22 @@ function renderHomeLanes(slots, variant) {
 }
 
 function renderPieces({ pieces, players, legalPieceIds, variant, movePiece, lastAction }) {
-  return pieces.map((piece) => {
-    const point = getLudoPiecePoint(piece, players, variant);
+  const stackMeta = buildPieceStackMeta(pieces, players, variant, legalPieceIds);
+  const sortedPieces = [...pieces].sort((a, b) => {
+    const legalDiff = Number(legalPieceIds.has(a.id)) - Number(legalPieceIds.has(b.id));
+    if (legalDiff) return legalDiff;
+    const movingDiff = Number(lastAction?.pieceId === a.id) - Number(lastAction?.pieceId === b.id);
+    if (movingDiff) return movingDiff;
+    return (a.colorIndex || 0) - (b.colorIndex || 0) || (a.pieceIndex || 0) - (b.pieceIndex || 0);
+  });
+
+  return sortedPieces.map((piece) => {
+    const basePoint = getLudoPiecePoint(piece, players, variant);
+    const meta = stackMeta.get(piece.id) || { index: 0, total: 1, offset: { x: 0, y: 0 } };
+    const point = {
+      x: basePoint.x + meta.offset.x,
+      y: basePoint.y + meta.offset.y,
+    };
     const player = players.find((item) => item.id === piece.playerId) || {};
     const color = player.colorHex || LUDO_COLORS[piece.color] || "#fff";
     const legal = legalPieceIds.has(piece.id);
@@ -254,8 +371,8 @@ function renderPieces({ pieces, players, legalPieceIds, variant, movePiece, last
 
     return <g
       key={piece.id}
-      className={cx("ludo-piece", variant, legal && "legal", moving && "moving", captured && "captured", piece.state === "finished" && "finished")}
-      style={{ "--player-color": color, transform: `translate(${point.x}px, ${point.y}px)` }}
+      className={cx("ludo-piece", variant, legal && "legal", moving && "moving", captured && "captured", piece.state === "finished" && "finished", meta.total > 1 && "stacked")}
+      style={{ "--player-color": color, "--stack-size": meta.total, transform: `translate(${point.x}px, ${point.y}px)`, pointerEvents: legal ? "auto" : "none" }}
       onClick={() => legal && movePiece(piece.id)}
       onKeyDown={(event) => {
         if (!legal || !["Enter", " "].includes(event.key)) return;
@@ -264,8 +381,9 @@ function renderPieces({ pieces, players, legalPieceIds, variant, movePiece, last
       }}
       tabIndex={legal ? 0 : undefined}
       role={legal ? "button" : "img"}
-      aria-label={`Peca ${piece.pieceIndex + 1} de ${player.name || ""}`}
+      aria-label={`Peca ${piece.pieceIndex + 1} de ${player.name || ""}${meta.total > 1 ? `, em casa com ${meta.total} pecas` : ""}`}
     >
+      {legal && <circle cx="0" cy="0" r={pieceRadius + 16} className="ludo-piece-hit-area" />}
       {(moving || captured || piece.state === "finished") && <circle cx="0" cy="0" r={pieceRadius + 13} className="ludo-piece-burst" />}
       <ellipse cx="0" cy={pieceRadius + 5} rx={pieceRadius * .86} ry="5" className="ludo-piece-ground" />
       <circle cx="0" cy="0" r={pieceRadius + 4} className="ludo-piece-ring" />
@@ -276,12 +394,13 @@ function renderPieces({ pieces, players, legalPieceIds, variant, movePiece, last
         className="ludo-piece-depth"
       />
       <text x="0" y="5" textAnchor="middle">{piece.pieceIndex + 1}</text>
+      {meta.total > 1 && <text x="0" y={pieceRadius + 17} textAnchor="middle" className="ludo-stack-count">×{meta.total}</text>}
     </g>;
   });
 }
 
 function ClassicLudoBoard(props) {
-  const { slots, players, safeCells, bubbles, reactions, pieces, legalPieceIds, legalTargets, currentTurnPlayerId, movePiece, trackSize } = props;
+  const { slots, players, safeCells, bubbles, reactions, pieces, legalPieceIds, legalTargets, legalMoves, currentTurnPlayerId, movePiece, trackSize } = props;
 
   return <svg className="ludo-board classic" viewBox="0 0 600 600" role="img" aria-label="Tabuleiro Ludo classico">
     {renderDefs()}
@@ -291,12 +410,13 @@ function ClassicLudoBoard(props) {
     {renderTrackCells({ variant: "classic", slots, safeCells, legalTargets, trackSize })}
     {renderHomeLanes(slots, "classic")}
     {renderCenter(slots, "classic")}
+    {renderLegalMoveHints({ legalMoves, pieces, players, variant: "classic" })}
     {renderPieces({ pieces, players, legalPieceIds, variant: "classic", movePiece, lastAction: props.lastAction })}
   </svg>;
 }
 
 function SixPlayerLudoBoard(props) {
-  const { slots, players, safeCells, bubbles, reactions, pieces, legalPieceIds, legalTargets, currentTurnPlayerId, movePiece, trackSize } = props;
+  const { slots, players, safeCells, bubbles, reactions, pieces, legalPieceIds, legalTargets, legalMoves, currentTurnPlayerId, movePiece, trackSize } = props;
 
   return <svg className="ludo-board six-players" viewBox="0 0 600 600" role="img" aria-label="Tabuleiro Ludo 6 jogadores">
     {renderDefs()}
@@ -321,6 +441,7 @@ function SixPlayerLudoBoard(props) {
     {renderTrackCells({ variant: "sixPlayers", slots, safeCells, legalTargets, trackSize })}
     {renderSixHomes({ players, slots, bubbles, reactions, pieces, currentTurnPlayerId })}
     {renderCenter(slots, "sixPlayers")}
+    {renderLegalMoveHints({ legalMoves, pieces, players, variant: "sixPlayers" })}
     {renderPieces({ pieces, players, legalPieceIds, variant: "sixPlayers", movePiece, lastAction: props.lastAction })}
   </svg>;
 }
@@ -331,12 +452,13 @@ export default function LudoBoard({ room, now, movePiece }) {
   const boardConfig = { ...getLudoBoardConfig(variant), ...(room.board || {}) };
   const slots = getLudoBoardSlots(variant);
   const pieces = room.pieces || [];
-  const legalPieceIds = new Set((room.legalMoves || []).map((move) => move.pieceId));
-  const legalTargets = new Set((room.legalMoves || []).map((move) => move.targetCell).filter(Number.isFinite));
+  const legalMoves = room.legalMoves || [];
+  const legalPieceIds = new Set(legalMoves.map((move) => move.pieceId));
+  const legalTargets = new Set(legalMoves.map((move) => move.targetCell).filter(Number.isFinite));
   const safeCells = new Set(room.board?.safeCells || []);
   const bubbles = (room.speechBubbles || []).filter((bubble) => bubble.expiresAt > now);
   const reactions = (room.reactions || []).filter((reaction) => reaction.expiresAt > now);
-  const props = { slots, players, safeCells, bubbles, reactions, pieces, legalPieceIds, legalTargets, currentTurnPlayerId: room.currentTurnPlayerId, movePiece, trackSize: boardConfig.trackSize, lastAction: room.lastAction };
+  const props = { slots, players, safeCells, bubbles, reactions, pieces, legalPieceIds, legalTargets, legalMoves, currentTurnPlayerId: room.currentTurnPlayerId, movePiece, trackSize: boardConfig.trackSize, lastAction: room.lastAction };
 
   return variant === "classic"
     ? <ClassicLudoBoard {...props} />
