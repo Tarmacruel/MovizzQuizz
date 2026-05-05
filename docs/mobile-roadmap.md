@@ -75,15 +75,24 @@ Compatibilidade Apple sera pelo navegador/PWA.
 
 ## Fase 3 - Otimizacoes Mobile
 
+Status atual:
+
 - [ ] Implementar touch gestures onde fizer sentido
-- [ ] Lazy loading de componentes pesados
-- [ ] Code splitting do `App.jsx`/telas de jogo
-- [ ] Reduzir bundle size
-- [ ] Loading skeletons
+- [x] Lazy loading do modulo pesado `App.jsx` apos login/entrada em sala
+- [x] Primeiro code splitting: entrada/auth/home separadas do bundle de jogo legado
+- [ ] Separar internamente o `App.jsx` em chunks por area: Admin, Quiz, Stop e Ludo
+- [ ] Reduzir bundle size apos a divisao interna
+- [ ] Loading skeletons por tela de jogo
 - [ ] Otimizar animacoes para 60fps
 - [ ] Testar dispositivos Android antigos
 - [ ] Lighthouse Performance
 - [ ] Revisar acessibilidade touch: tamanho minimo de botoes, foco e contraste
+
+### Estrategia da Fase 3
+
+A primeira entrega reduz o custo inicial do app: a tela de login e a nova home nao carregam imediatamente o `App.jsx` gigante. O modulo legado so e baixado quando o usuario entra em uma sala, acessa `/admin` ou abre `/jogar/:codigo`.
+
+Proxima etapa recomendada: quebrar o `App.jsx` por dominio, removendo gradualmente componentes internos para arquivos proprios e usando import dinamico nos fluxos de Admin, Quiz, Stop e Ludo.
 
 ---
 

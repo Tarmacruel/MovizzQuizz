@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 import {
   ArrowRight,
@@ -12,7 +12,8 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import App from "./App.jsx";
+
+const App = lazy(() => import("./App.jsx"));
 
 const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV && isLocalhost ? "http://localhost:8001" : window.location.origin);
@@ -54,6 +55,19 @@ const MODE_META = {
   stop: ["✍️", "Stop / Adedanha", "Rodadas por letra e categorias."],
   ludo: ["🎲", "Ludo", "Tabuleiro, dado e disputa entre amigos."],
 };
+
+function AppLoadingFallback() {
+  return (
+    <main className="lazy-app-loading mobile-safe-page" role="status" aria-live="polite">
+      <section>
+        <span className="auth-logo"><Gamepad2 size={26} /></span>
+        <span className="auth-kicker">MovizzQuizz</span>
+        <h1>Carregando partida.</h1>
+        <p>Preparando o módulo completo do jogo...</p>
+      </section>
+    </main>
+  );
+}
 
 function makeBrowserPlayerId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -307,7 +321,7 @@ export default function AuthFirstEntry() {
   }
 
   if (handoffToApp) {
-    return <App />;
+    return <Suspense fallback={<AppLoadingFallback />}><App /></Suspense>;
   }
 
   if (!activeIdentity) {
