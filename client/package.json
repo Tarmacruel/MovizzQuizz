@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
+    "assets:bee": "node scripts/export-bee-assets.mjs",
     "mobile:build": "npm run build && npx cap sync android",
     "android:add": "npx cap add android",
     "android:sync": "npx cap sync android",
@@ -32,6 +33,7 @@
     "lucide-react": "^0.468.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.2.0"
+    "@capacitor/cli": "^6.2.0",
+    "sharp": "^0.33.5"
   }
 }

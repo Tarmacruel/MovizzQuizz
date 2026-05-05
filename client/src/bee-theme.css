@@ -20,6 +20,7 @@
   --bee-gradient-secondary: linear-gradient(135deg, rgba(139, 92, 246, 0.88), rgba(247, 201, 72, 0.72));
   --bee-honeycomb-bg: url('/brand/bee/backgrounds/honeycomb-bg.svg');
   --bee-honeycomb-mobile-bg: url('/brand/bee/backgrounds/honeycomb-mobile-bg.svg');
+  --bee-default-avatar: url('/brand/bee/avatars/default-user.svg');
 }
 
 html,
@@ -68,6 +69,27 @@ body {
 .pwa-install-icon {
   background: var(--bee-gradient-primary) !important;
   box-shadow: var(--bee-glow-gold), 0 18px 48px rgba(0, 0, 0, 0.34) !important;
+}
+
+.new-home-user {
+  position: relative;
+  padding-left: 62px !important;
+}
+
+.new-home-user::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(247, 201, 72, 0.46);
+  border-radius: 50%;
+  background-image: var(--bee-default-avatar);
+  background-position: center;
+  background-size: cover;
+  box-shadow: var(--bee-glow-gold), 0 12px 28px rgba(0, 0, 0, 0.34);
+  transform: translateY(-50%);
 }
 
 .auth-kicker,
@@ -119,6 +141,19 @@ body {
 .auth-message {
   border-color: rgba(248, 113, 113, 0.36) !important;
   background: rgba(127, 29, 29, 0.28) !important;
+}
+
+@media (max-width: 920px) {
+  .new-home-user {
+    min-height: 72px;
+    padding-left: 68px !important;
+  }
+
+  .new-home-user::before {
+    left: 14px;
+    width: 44px;
+    height: 44px;
+  }
 }
 
 @media (max-width: 760px) {
