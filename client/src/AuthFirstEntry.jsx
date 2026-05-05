@@ -116,6 +116,25 @@ function normalizeHandle(value) {
     .slice(0, 24);
 }
 
+function extractRoomCode(payload = {}) {
+  const code = payload.roomCode
+    || payload.code
+    || payload.room?.roomCode
+    || payload.room?.code
+    || payload.room?.id
+    || payload.createdRoom?.code
+    || payload.createdRoom?.roomCode;
+  return String(code || "").trim().toUpperCase();
+}
+
+function extractJoinedPlayerId(payload = {}, fallbackPlayerId) {
+  return payload.playerId
+    || payload.player?.id
+    || payload.currentPlayer?.id
+    || payload.joinedPlayer?.id
+    || fallbackPlayerId;
+}
+
 export default function AuthFirstEntry() {
   const [handoffToApp, setHandoffToApp] = useState(Boolean(getInviteRoomCode()) || window.location.pathname.startsWith("/admin"));
   const [socket] = useState(() => io(API_URL, { autoConnect: true }));
@@ -132,6 +151,7 @@ export default function AuthFirstEntry() {
   const [joinCode, setJoinCode] = useState(getInviteRoomCode());
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [pendingRoomAction, setPendingRoomAction] = useState("");
   const [message, setMessage] = useState("");
   const [roomSession, setRoomSession] = useState(() => readJsonStorage(ROOM_SESSION_KEY));
 
@@ -172,32 +192,66 @@ export default function AuthFirstEntry() {
     };
   }, [activeIdentity, handoffToApp]);
 
+  function completeRoomHandoff(payload = {}) {
+    const roomCode = extractRoomCode(payload) || joinCode.trim().toUpperCase();
+    if (!roomCode) return false;
+
+    const nextPlayerId = extractJoinedPlayerId(payload, playerId);
+    const playerName = activeIdentity?.name || payload.playerName || payload.player?.name || "Jogador";
+    const session = { roomCode, playerId: nextPlayerId, playerName };
+
+    writeJsonStorage(ROOM_SESSION_KEY, session);
+    setRoomSession(session);
+    setLoading(false);
+    setPendingRoomAction("");
+    setMessage("");
+    window.history.replaceState({}, "", "/");
+    setHandoffToApp(true);
+    return true;
+  }
+
   useEffect(() => {
     if (handoffToApp || !activeIdentity) return undefined;
 
     function handleJoined(payload = {}) {
-      const roomCode = String(payload.roomCode || joinCode || "").toUpperCase();
-      const nextPlayerId = payload.playerId || playerId;
-      const session = { roomCode, playerId: nextPlayerId, playerName: activeIdentity.name };
-      writeJsonStorage(ROOM_SESSION_KEY, session);
-      setRoomSession(session);
-      setLoading(false);
-      setMessage("");
-      setHandoffToApp(true);
+      completeRoomHandoff(payload);
     }
 
     function handleError(payload = {}) {
       setLoading(false);
+      setPendingRoomAction("");
       setMessage(payload.message || "Nao foi possivel concluir a operacao.");
     }
 
+    function handleConnectError() {
+      setLoading(false);
+      setPendingRoomAction("");
+      setMessage("Falha de conexao com a sala. Tente novamente.");
+    }
+
     socket.on("room:joined", handleJoined);
+    socket.on("room:created", handleJoined);
+    socket.on("room:ready", handleJoined);
     socket.on("room:error", handleError);
+    socket.on("connect_error", handleConnectError);
     return () => {
       socket.off("room:joined", handleJoined);
+      socket.off("room:created", handleJoined);
+      socket.off("room:ready", handleJoined);
       socket.off("room:error", handleError);
+      socket.off("connect_error", handleConnectError);
     };
   }, [activeIdentity, handoffToApp, joinCode, playerId, socket]);
+
+  useEffect(() => {
+    if (!loading || !pendingRoomAction) return undefined;
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setPendingRoomAction("");
+      setMessage("A sala foi solicitada, mas o app nao recebeu confirmacao de entrada. Tente novamente ou use o codigo da sala exibido na lista.");
+    }, 12000);
+    return () => window.clearTimeout(timeout);
+  }, [loading, pendingRoomAction]);
 
   useEffect(() => {
     if (!handoffToApp) return undefined;
@@ -229,6 +283,7 @@ export default function AuthFirstEntry() {
 
   async function doAccountAuth(event) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setMessage("");
     const isRegister = authMode === "register";
@@ -287,36 +342,50 @@ export default function AuthFirstEntry() {
     setAccountSession(null);
     setVisitorSession(null);
     setRoomSession(null);
+    setLoading(false);
+    setPendingRoomAction("");
     setHandoffToApp(false);
   }
 
   function createRoom() {
-    if (!activeIdentity) return;
+    if (!activeIdentity || loading || pendingRoomAction) return;
     setLoading(true);
+    setPendingRoomAction("create");
     setMessage("");
+
+    if (!socket.connected) socket.connect();
+
     socket.emit("room:create", {
       playerName: activeIdentity.name,
       playerId,
       accountToken: activeIdentity.token || "",
       settings,
+    }, (payload = {}) => {
+      completeRoomHandoff(payload);
     });
   }
 
   function joinRoom(event) {
     event.preventDefault();
-    if (!activeIdentity) return;
+    if (!activeIdentity || loading || pendingRoomAction) return;
     const code = joinCode.trim().toUpperCase();
     if (!code) {
       setMessage("Informe o codigo da sala.");
       return;
     }
     setLoading(true);
+    setPendingRoomAction("join");
     setMessage("");
+
+    if (!socket.connected) socket.connect();
+
     socket.emit("room:join", {
       roomCode: code,
       playerName: activeIdentity.name,
       playerId,
       accountToken: activeIdentity.token || "",
+    }, (payload = {}) => {
+      completeRoomHandoff({ ...payload, roomCode: extractRoomCode(payload) || code });
     });
   }
 
@@ -417,11 +486,11 @@ export default function AuthFirstEntry() {
           <p>A tela antiga foi removida da entrada. A experiencia agora parte de login, visitante ou admin.</p>
         </div>
         <div className="home-actions-card">
-          <button type="button" className="auth-primary" onClick={createRoom} disabled={loading}>
-            <Plus size={18} /> {loading ? "Criando..." : "Criar sala"}
+          <button type="button" className="auth-primary" onClick={createRoom} disabled={loading || Boolean(pendingRoomAction)}>
+            <Plus size={18} /> {pendingRoomAction === "create" ? "Criando..." : "Criar sala"}
           </button>
           {roomSession?.roomCode && (
-            <button type="button" className="auth-secondary" onClick={() => setHandoffToApp(true)}>
+            <button type="button" className="auth-secondary" onClick={() => setHandoffToApp(true)} disabled={loading || Boolean(pendingRoomAction)}>
               <Sparkles size={18} /> Continuar sala {roomSession.roomCode}
             </button>
           )}
@@ -433,7 +502,7 @@ export default function AuthFirstEntry() {
           <h2>Modos de jogo</h2>
           <div className="game-mode-selector">
             {Object.entries(MODE_META).map(([mode, meta]) => (
-              <button key={mode} type="button" className={selectedMode === mode ? "game-mode-card active" : "game-mode-card"} onClick={() => selectMode(mode)}>
+              <button key={mode} type="button" className={selectedMode === mode ? "game-mode-card active" : "game-mode-card"} onClick={() => selectMode(mode)} disabled={loading || Boolean(pendingRoomAction)}>
                 <span>{meta[0]}</span>
                 <strong>{meta[1]}</strong>
                 <small>{meta[2]}</small>
@@ -444,21 +513,21 @@ export default function AuthFirstEntry() {
           <div className="settings-panel">
             <label>
               Nome da partida
-              <input value={settings.matchName || ""} onChange={(event) => setSettings({ ...settings, matchName: event.target.value })} />
+              <input value={settings.matchName || ""} onChange={(event) => setSettings({ ...settings, matchName: event.target.value })} disabled={loading || Boolean(pendingRoomAction)} />
             </label>
             <label>
               Maximo de jogadores
-              <input type="number" min="2" max={selectedMode === "ludo" ? 6 : 20} value={settings.maxPlayers || 2} onChange={(event) => setSettings({ ...settings, maxPlayers: clampNumber(event.target.value, 2, selectedMode === "ludo" ? 6 : 20) })} />
+              <input type="number" min="2" max={selectedMode === "ludo" ? 6 : 20} value={settings.maxPlayers || 2} onChange={(event) => setSettings({ ...settings, maxPlayers: clampNumber(event.target.value, 2, selectedMode === "ludo" ? 6 : 20) })} disabled={loading || Boolean(pendingRoomAction)} />
             </label>
             {selectedMode === "quiz" && (
               <>
                 <label>
                   Perguntas
-                  <input type="number" min="5" max="50" value={settings.totalQuestions || 20} onChange={(event) => setSettings({ ...settings, totalQuestions: clampNumber(event.target.value, 5, 50) })} />
+                  <input type="number" min="5" max="50" value={settings.totalQuestions || 20} onChange={(event) => setSettings({ ...settings, totalQuestions: clampNumber(event.target.value, 5, 50) })} disabled={loading || Boolean(pendingRoomAction)} />
                 </label>
                 <label>
                   Segundos por pergunta
-                  <input type="number" min="10" max="60" value={settings.secondsPerQuestion || 30} onChange={(event) => setSettings({ ...settings, secondsPerQuestion: clampNumber(event.target.value, 10, 60) })} />
+                  <input type="number" min="10" max="60" value={settings.secondsPerQuestion || 30} onChange={(event) => setSettings({ ...settings, secondsPerQuestion: clampNumber(event.target.value, 10, 60) })} disabled={loading || Boolean(pendingRoomAction)} />
                 </label>
               </>
             )}
@@ -466,11 +535,11 @@ export default function AuthFirstEntry() {
               <>
                 <label>
                   Rodadas
-                  <input type="number" min="1" max="20" value={settings.totalRounds || 5} onChange={(event) => setSettings({ ...settings, totalRounds: clampNumber(event.target.value, 1, 20) })} />
+                  <input type="number" min="1" max="20" value={settings.totalRounds || 5} onChange={(event) => setSettings({ ...settings, totalRounds: clampNumber(event.target.value, 1, 20) })} disabled={loading || Boolean(pendingRoomAction)} />
                 </label>
                 <label>
                   Segundos por rodada
-                  <input type="number" min="30" max="180" value={settings.roundSeconds || 90} onChange={(event) => setSettings({ ...settings, roundSeconds: clampNumber(event.target.value, 30, 180) })} />
+                  <input type="number" min="30" max="180" value={settings.roundSeconds || 90} onChange={(event) => setSettings({ ...settings, roundSeconds: clampNumber(event.target.value, 30, 180) })} disabled={loading || Boolean(pendingRoomAction)} />
                 </label>
               </>
             )}
@@ -482,10 +551,10 @@ export default function AuthFirstEntry() {
             <h2>Entrar com codigo</h2>
             <label>
               Codigo da sala
-              <input value={joinCode} maxLength={8} placeholder="ABCDE" onChange={(event) => setJoinCode(event.target.value.toUpperCase())} />
+              <input value={joinCode} maxLength={8} placeholder="ABCDE" onChange={(event) => setJoinCode(event.target.value.toUpperCase())} disabled={loading || Boolean(pendingRoomAction)} />
             </label>
-            <button type="submit" className="auth-secondary" disabled={loading}>
-              <Hash size={18} /> Entrar
+            <button type="submit" className="auth-secondary" disabled={loading || Boolean(pendingRoomAction)}>
+              <Hash size={18} /> {pendingRoomAction === "join" ? "Entrando..." : "Entrar"}
             </button>
           </form>
 
@@ -493,7 +562,7 @@ export default function AuthFirstEntry() {
             <h2>Salas publicas</h2>
             {rooms.length === 0 && <p>Nenhuma sala publica aberta agora.</p>}
             {rooms.slice(0, 5).map((room) => (
-              <button key={room.code} type="button" className="public-room-row" onClick={() => setJoinCode(room.code)}>
+              <button key={room.code} type="button" className="public-room-row" onClick={() => setJoinCode(room.code)} disabled={loading || Boolean(pendingRoomAction)}>
                 <strong>{room.matchName || room.gameType}</strong>
                 <small>{room.code} - {room.playerCount}/{room.maxPlayers}</small>
               </button>
