@@ -2,34 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-function movizzManualChunks(id) {
-  if (id.includes('node_modules')) {
-    if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
-    if (id.includes('socket.io-client') || id.includes('engine.io-client')) return 'vendor-socket';
-    if (id.includes('lucide-react')) return 'vendor-icons';
-    if (id.includes('@capacitor')) return 'vendor-capacitor';
-    return 'vendor';
-  }
-
-  if (
-    id.includes('/src/LudoBoard') ||
-    id.includes('/src/ludoBoardGeometry') ||
-    id.includes('/src/ludo-interactions.css')
-  ) {
-    return 'game-ludo';
-  }
-
-  if (id.includes('/src/AuthFirstEntry') || id.includes('/src/auth-first.css')) {
-    return 'entry-auth';
-  }
-
-  if (id.includes('/src/components/PWAInstallPrompt') || id.includes('/src/components/MobileNativeBridge')) {
-    return 'mobile-shell';
-  }
-
-  return undefined;
-}
-
 export default defineConfig({
   plugins: [
     react(),
@@ -149,14 +121,6 @@ export default defineConfig({
   build: {
     sourcemap: false,
     cssCodeSplit: true,
-    rollupOptions: {
-      output: {
-        manualChunks: movizzManualChunks,
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
-      },
-    },
   },
   server: {
     port: 5180,
