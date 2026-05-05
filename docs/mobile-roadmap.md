@@ -80,7 +80,8 @@ Status atual:
 - [ ] Implementar touch gestures onde fizer sentido
 - [x] Lazy loading do modulo pesado `App.jsx` apos login/entrada em sala
 - [x] Primeiro code splitting: entrada/auth/home separadas do bundle de jogo legado
-- [ ] Separar internamente o `App.jsx` em chunks por area: Admin, Quiz, Stop e Ludo
+- [x] Segundo corte: `manualChunks` no Vite para separar vendors, entrada/auth, shell mobile e Ludo
+- [ ] Separar internamente o `App.jsx` em arquivos por area: Admin, Quiz, Stop e Ludo
 - [ ] Reduzir bundle size apos a divisao interna
 - [ ] Loading skeletons por tela de jogo
 - [ ] Otimizar animacoes para 60fps
@@ -90,7 +91,17 @@ Status atual:
 
 ### Estrategia da Fase 3
 
-A primeira entrega reduz o custo inicial do app: a tela de login e a nova home nao carregam imediatamente o `App.jsx` gigante. O modulo legado so e baixado quando o usuario entra em uma sala, acessa `/admin` ou abre `/jogar/:codigo`.
+A primeira entrega reduziu o custo inicial do app: a tela de login e a nova home nao carregam imediatamente o `App.jsx` gigante. O modulo legado so e baixado quando o usuario entra em uma sala, acessa `/admin` ou abre `/jogar/:codigo`.
+
+A segunda entrega usa `manualChunks` do Rollup/Vite para separar melhor o build gerado:
+
+- `vendor-react`
+- `vendor-socket`
+- `vendor-icons`
+- `vendor-capacitor`
+- `entry-auth`
+- `mobile-shell`
+- `game-ludo`
 
 Proxima etapa recomendada: quebrar o `App.jsx` por dominio, removendo gradualmente componentes internos para arquivos proprios e usando import dinamico nos fluxos de Admin, Quiz, Stop e Ludo.
 
