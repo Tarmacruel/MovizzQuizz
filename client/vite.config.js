@@ -8,7 +8,12 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: [
-        'favicon.svg',
+        'brand/bee/icons/favicon-16x16.png',
+        'brand/bee/icons/favicon-32x32.png',
+        'brand/bee/icons/apple-touch-icon-180x180.png',
+        'brand/bee/icons/icon-192x192.png',
+        'brand/bee/icons/icon-512x512.png',
+        'brand/bee/icons/icon-maskable-512x512.png',
         'brand/bee/icons/icon.svg',
         'brand/bee/icons/maskable-icon.svg',
         'brand/bee/icons/notification-monochrome.svg',
@@ -32,22 +37,28 @@ export default defineConfig({
         lang: 'pt-BR',
         icons: [
           {
-            src: '/brand/bee/icons/icon.svg',
+            src: '/brand/bee/icons/icon-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any'
+          },
+          {
+            src: '/brand/bee/icons/icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/brand/bee/icons/icon-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           },
           {
             src: '/brand/bee/icons/icon.svg',
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any'
-          },
-          {
-            src: '/brand/bee/icons/maskable-icon.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'maskable'
           }
         ],
         screenshots: [
