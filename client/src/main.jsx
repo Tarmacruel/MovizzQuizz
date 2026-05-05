@@ -10,6 +10,7 @@ import './clean-lobby.css';
 import './auth-first.css';
 import './pwa-mobile.css';
 import './ludo-interactions.css';
+import './bee-theme.css';
 
 registerSW({
   immediate: true,

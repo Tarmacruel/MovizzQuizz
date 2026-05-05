@@ -1,0 +1,131 @@
+:root {
+  --bee-bg: #070713;
+  --bee-bg-soft: #0b0d19;
+  --bee-surface: rgba(13, 16, 32, 0.82);
+  --bee-surface-strong: rgba(17, 24, 39, 0.94);
+  --bee-surface-glass: rgba(255, 255, 255, 0.07);
+  --bee-gold: #f7c948;
+  --bee-amber: #f59e0b;
+  --bee-gold-soft: #ffe08a;
+  --bee-violet: #8b5cf6;
+  --bee-magenta: #ec4899;
+  --bee-text: #f8fafc;
+  --bee-muted: #cbd5e1;
+  --bee-border: rgba(247, 201, 72, 0.22);
+  --bee-border-strong: rgba(247, 201, 72, 0.46);
+  --bee-shadow: 0 24px 90px rgba(0, 0, 0, 0.42);
+  --bee-glow-gold: 0 0 24px rgba(247, 201, 72, 0.28);
+  --bee-glow-violet: 0 0 28px rgba(139, 92, 246, 0.30);
+  --bee-gradient-primary: linear-gradient(135deg, #f7c948 0%, #f59e0b 46%, #ec4899 100%);
+  --bee-gradient-secondary: linear-gradient(135deg, rgba(139, 92, 246, 0.88), rgba(247, 201, 72, 0.72));
+  --bee-honeycomb-bg: url('/brand/bee/backgrounds/honeycomb-bg.svg');
+  --bee-honeycomb-mobile-bg: url('/brand/bee/backgrounds/honeycomb-mobile-bg.svg');
+}
+
+html,
+body {
+  background: var(--bee-bg);
+}
+
+body {
+  color: var(--bee-text);
+  background-image:
+    radial-gradient(circle at 12% 4%, rgba(247, 201, 72, 0.14), transparent 32%),
+    radial-gradient(circle at 88% 10%, rgba(139, 92, 246, 0.18), transparent 36%),
+    radial-gradient(circle at 70% 92%, rgba(236, 72, 153, 0.10), transparent 34%),
+    var(--bee-honeycomb-bg);
+  background-size: auto, auto, auto, cover;
+  background-attachment: fixed;
+}
+
+.auth-first-card,
+.new-home-hero,
+.game-mode-panel,
+.join-panel,
+.home-actions-card,
+.structured-main-panel,
+.structured-side-panel,
+.structured-resume-card,
+.pwa-install-card {
+  border-color: var(--bee-border) !important;
+  background:
+    linear-gradient(135deg, rgba(247, 201, 72, 0.08), rgba(139, 92, 246, 0.09)),
+    var(--bee-surface-glass) !important;
+  box-shadow: var(--bee-shadow), var(--bee-glow-violet) !important;
+}
+
+.auth-brand-block,
+.lazy-app-loading section {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(247, 201, 72, 0.15), transparent 35%),
+    radial-gradient(circle at 86% 82%, rgba(139, 92, 246, 0.15), transparent 40%),
+    rgba(7, 7, 19, 0.62) !important;
+  border: 1px solid rgba(247, 201, 72, 0.12);
+}
+
+.auth-logo,
+.new-home-brand span,
+.pwa-install-icon {
+  background: var(--bee-gradient-primary) !important;
+  box-shadow: var(--bee-glow-gold), 0 18px 48px rgba(0, 0, 0, 0.34) !important;
+}
+
+.auth-kicker,
+.structured-eyebrow,
+.new-home-user span {
+  color: var(--bee-gold-soft) !important;
+}
+
+.auth-primary,
+.structured-primary {
+  color: #111827 !important;
+  background: var(--bee-gradient-primary) !important;
+  box-shadow: 0 18px 44px rgba(247, 201, 72, 0.22), var(--bee-glow-gold) !important;
+}
+
+.auth-secondary,
+.structured-secondary,
+.access-choice,
+.game-mode-card,
+.public-room-row,
+.new-home-user,
+.auth-form,
+.auth-mode-tabs button,
+.settings-panel input,
+.join-panel input,
+.auth-form input {
+  border-color: rgba(247, 201, 72, 0.16) !important;
+  background: rgba(7, 7, 19, 0.62) !important;
+}
+
+.access-choice.active,
+.access-choice:hover,
+.game-mode-card.active,
+.auth-mode-tabs button.active {
+  border-color: var(--bee-border-strong) !important;
+  background:
+    linear-gradient(135deg, rgba(247, 201, 72, 0.16), rgba(139, 92, 246, 0.20)),
+    rgba(7, 7, 19, 0.72) !important;
+  box-shadow: var(--bee-glow-gold) !important;
+}
+
+.auth-form input:focus,
+.settings-panel input:focus,
+.join-panel input:focus {
+  border-color: var(--bee-gold) !important;
+  box-shadow: 0 0 0 4px rgba(247, 201, 72, 0.16) !important;
+}
+
+.auth-message {
+  border-color: rgba(248, 113, 113, 0.36) !important;
+  background: rgba(127, 29, 29, 0.28) !important;
+}
+
+@media (max-width: 760px) {
+  body {
+    background-image:
+      radial-gradient(circle at 10% 3%, rgba(247, 201, 72, 0.16), transparent 32%),
+      radial-gradient(circle at 92% 12%, rgba(139, 92, 246, 0.18), transparent 36%),
+      var(--bee-honeycomb-mobile-bg);
+  }
+}

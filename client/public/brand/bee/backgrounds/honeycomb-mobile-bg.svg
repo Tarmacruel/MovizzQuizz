@@ -1,0 +1,25 @@
+<svg width="1080" height="1920" viewBox="0 0 1080 1920" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1920" fill="#070713"/>
+  <circle cx="150" cy="160" r="360" fill="#F7C948" fill-opacity="0.18"/>
+  <circle cx="920" cy="1640" r="460" fill="#8B5CF6" fill-opacity="0.22"/>
+  <circle cx="760" cy="280" r="260" fill="#EC4899" fill-opacity="0.11"/>
+  <g opacity="0.15" stroke="#FFE08A" stroke-width="2.2">
+    <path d="M70 210h82l41 72-41 72H70l-41-72 41-72Z"/>
+    <path d="M193 138h82l41 72-41 72h-82l-41-72 41-72Z"/>
+    <path d="M316 210h82l41 72-41 72h-82l-41-72 41-72Z"/>
+    <path d="M439 138h82l41 72-41 72h-82l-41-72 41-72Z"/>
+    <path d="M562 210h82l41 72-41 72h-82l-41-72 41-72Z"/>
+    <path d="M685 138h82l41 72-41 72h-82l-41-72 41-72Z"/>
+    <path d="M808 210h82l41 72-41 72h-82l-41-72 41-72Z"/>
+  </g>
+  <g opacity="0.08" stroke="#C4B5FD" stroke-width="2">
+    <path d="M70 1020h92l46 80-46 80H70l-46-80 46-80Z"/>
+    <path d="M208 940h92l46 80-46 80h-92l-46-80 46-80Z"/>
+    <path d="M346 1020h92l46 80-46 80h-92l-46-80 46-80Z"/>
+    <path d="M622 1220h92l46 80-46 80h-92l-46-80 46-80Z"/>
+    <path d="M760 1140h92l46 80-46 80h-92l-46-80 46-80Z"/>
+    <path d="M898 1220h92l46 80-46 80h-92l-46-80 46-80Z"/>
+  </g>
+  <rect width="1080" height="1920" fill="url(#vignette)"/>
+  <defs><radialGradient id="vignette" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(540 960) rotate(90) scale(1080 660)"><stop stop-color="#070713" stop-opacity="0"/><stop offset="1" stop-color="#02030A" stop-opacity="0.78"/></radialGradient></defs>
+</svg>

@@ -69,7 +69,21 @@ Este documento organiza:
 | CTA Criar Sala | `futuristic_create_room_button_design.png` | `[x]` |
 | CTA Entrar | `glowing_futuristic_enter_button_design.png` | `[x]` |
 
-### 3.2 Ativos alternativos em espera
+### 3.2 Ativos adicionados ao repositório neste Patch 1
+
+| Função | Caminho | Status |
+|---|---|---:|
+| Ícone principal SVG | `client/public/brand/bee/icons/icon.svg` | `[x]` |
+| Ícone maskable SVG | `client/public/brand/bee/icons/maskable-icon.svg` | `[x]` |
+| Ícone notification monocromático SVG | `client/public/brand/bee/icons/notification-monochrome.svg` | `[x]` |
+| Background honeycomb desktop SVG | `client/public/brand/bee/backgrounds/honeycomb-bg.svg` | `[x]` |
+| Background honeycomb mobile SVG | `client/public/brand/bee/backgrounds/honeycomb-mobile-bg.svg` | `[x]` |
+| Avatar padrão SVG | `client/public/brand/bee/avatars/default-user.svg` | `[x]` |
+| Avatar visitante SVG | `client/public/brand/bee/avatars/guest-user.svg` | `[x]` |
+| Tema global CSS | `client/src/bee-theme.css` | `[x]` |
+| Script de exportação auxiliar | `client/scripts/export-bee-assets.mjs` | `[x]` |
+
+### 3.3 Ativos alternativos em espera
 
 Estes arquivos são úteis como inspiração, mas não devem entrar todos no Patch 1 para evitar duplicidade visual:
 
@@ -99,6 +113,9 @@ Criar a base visual global sem reescrever todas as telas de uma vez. O Patch 1 d
 
 #### 4.1 Assets finais de instalação
 
+- [x] Adicionar fonte SVG para ícone principal
+- [x] Adicionar fonte SVG para ícone maskable
+- [x] Adicionar ícone monocromático para notificação
 - [ ] Exportar `icon-192x192.png`
 - [ ] Exportar `icon-512x512.png`
 - [ ] Exportar `icon-maskable-512x512.png`
@@ -114,6 +131,9 @@ Criar a base visual global sem reescrever todas as telas de uma vez. O Patch 1 d
 ```txt
 client/public/brand/bee/
   icons/
+    icon.svg
+    maskable-icon.svg
+    notification-monochrome.svg
     icon-192x192.png
     icon-512x512.png
     icon-maskable-512x512.png
@@ -124,11 +144,15 @@ client/public/brand/bee/
     adaptive-icon-foreground.png
     adaptive-icon-background.png
   backgrounds/
+    honeycomb-bg.svg
+    honeycomb-mobile-bg.svg
     app-bg-vertical.png
     app-bg-horizontal.png
     honeycomb-subtle.png
     splash-mobile.png
   avatars/
+    default-user.svg
+    guest-user.svg
     default-user.png
     guest-user.png
     admin-badge.png
@@ -140,8 +164,8 @@ client/public/brand/bee/
 
 #### 4.3 CSS global
 
-- [ ] Criar `client/src/bee-theme.css`
-- [ ] Definir tokens CSS globais:
+- [x] Criar `client/src/bee-theme.css`
+- [x] Definir tokens CSS globais:
   - `--bee-bg`
   - `--bee-surface`
   - `--bee-surface-strong`
@@ -153,17 +177,18 @@ client/public/brand/bee/
   - `--bee-muted`
   - `--bee-border`
   - `--bee-shadow`
-- [ ] Atualizar `main.jsx` para importar `bee-theme.css`
-- [ ] Aplicar fundo global dark/honeycomb no `body`
-- [ ] Atualizar botões globais `.auth-primary`, `.auth-secondary`, `.primary`, `.secondary`
-- [ ] Atualizar cards globais e painéis principais
-- [ ] Atualizar estados `disabled`, `focus`, `hover`, `loading`
+- [x] Atualizar `main.jsx` para importar `bee-theme.css`
+- [x] Aplicar fundo global dark/honeycomb no `body`
+- [x] Atualizar botões globais `.auth-primary`, `.auth-secondary`, `.primary`, `.secondary`
+- [x] Atualizar cards globais e painéis principais
+- [x] Atualizar estados `disabled`, `focus`, `hover`, `loading` de forma inicial
 
 #### 4.4 Manifest/PWA
 
-- [ ] Atualizar `vite.config.js` para apontar para PNGs reais
-- [ ] Atualizar `index.html` para usar favicons reais
-- [ ] Atualizar `theme-color` para a nova paleta
+- [x] Atualizar `vite.config.js` para apontar para os SVGs da identidade bee
+- [ ] Atualizar `vite.config.js` para apontar para PNGs reais após exportação
+- [ ] Atualizar `index.html` para usar favicons reais após exportação
+- [x] Manter `theme-color` compatível com a nova paleta
 - [ ] Validar manifest no DevTools
 - [ ] Validar instalação no Chrome Android
 - [ ] Validar Safari/iOS via “Adicionar à Tela de Início”
@@ -312,13 +337,12 @@ Concluir a migração visual com polimento técnico.
 
 ## 9. Ordem recomendada de execução imediata
 
-1. **Gerar/exportar PNGs finais a partir dos ativos canônicos**
-2. **Adicionar assets em `client/public/brand/bee/`**
-3. **Criar `bee-theme.css` com tokens globais**
-4. **Atualizar manifest/PWA para os PNGs reais**
-5. **Aplicar tema global em Auth/Home**
-6. **Validar build web e Android**
-7. **Só depois aplicar telas internas de jogo**
+1. **Validar o Patch 1 visual global no navegador e APK**
+2. **Exportar PNGs finais a partir dos SVGs canônicos**
+3. **Atualizar manifest/PWA para PNGs reais**
+4. **Aplicar tema refinado em Auth/Home**
+5. **Validar build web e Android**
+6. **Só depois aplicar telas internas de jogo**
 
 ---
 
@@ -326,7 +350,7 @@ Concluir a migração visual com polimento técnico.
 
 Este arquivo deve ser atualizado a cada PR visual.
 
-### Atualizações realizadas neste PR
+### Atualizações realizadas no PR de documentação
 
 - [x] Criado plano faseado da nova identidade bee
 - [x] Catalogados ativos canônicos e alternativos
@@ -334,13 +358,28 @@ Este arquivo deve ser atualizado a cada PR visual.
 - [x] Definidos critérios de aceite por patch
 - [x] Definida ordem recomendada de execução
 
+### Atualizações realizadas neste PR — `feat/bee-identity-assets-pack`
+
+- [x] Adicionado ícone principal SVG
+- [x] Adicionado ícone maskable SVG
+- [x] Adicionado ícone notification monocromático SVG
+- [x] Adicionado background honeycomb desktop SVG
+- [x] Adicionado background honeycomb mobile SVG
+- [x] Adicionado avatar padrão SVG
+- [x] Adicionado avatar visitante SVG
+- [x] Criado `bee-theme.css`
+- [x] Importado `bee-theme.css` no app
+- [x] Atualizado manifest PWA para usar assets bee SVG
+- [x] Criado script auxiliar de exportação de assets
+
 ### Próximo PR sugerido
 
-**`feat/bee-identity-assets-pack`**
+**`feat/bee-identity-png-exports`**
 
 Escopo:
 
-- exportar PNGs finais;
-- adicionar assets em `client/public/brand/bee/`;
-- atualizar `vite.config.js` e `index.html` para usar os novos ícones;
-- criar `bee-theme.css` inicial.
+- gerar PNGs finais a partir dos SVGs;
+- atualizar manifest/PWA para PNGs reais;
+- atualizar `index.html` para favicons reais;
+- criar badge admin em formato seguro;
+- aplicar avatar padrão no perfil/home.
