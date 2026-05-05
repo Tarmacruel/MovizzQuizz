@@ -12,9 +12,45 @@
   touch-action: manipulation;
 }
 
-.auth-first-page {
+.auth-first-page,
+.lazy-app-loading {
   display: grid;
   place-items: center;
+}
+
+.lazy-app-loading {
+  min-height: 100dvh;
+  width: min(680px, calc(100% - 28px));
+  margin: 0 auto;
+  color: #fff;
+}
+
+.lazy-app-loading section {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 30px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(99,102,241,.30), transparent 34%),
+    radial-gradient(circle at 90% 88%, rgba(236,72,153,.20), transparent 34%),
+    rgba(255,255,255,.07);
+  box-shadow: 0 26px 90px rgba(0,0,0,.38);
+  backdrop-filter: blur(18px);
+}
+
+.lazy-app-loading h1 {
+  margin: 0;
+  font-size: clamp(40px, 9vw, 70px);
+  line-height: .92;
+  letter-spacing: -.07em;
+}
+
+.lazy-app-loading p {
+  margin: 0;
+  color: #b9c1d8;
+  line-height: 1.55;
 }
 
 .auth-first-card {
@@ -450,7 +486,13 @@
   }
 
   .auth-brand-block h1,
-  .new-home-hero h1 {
+  .new-home-hero h1,
+  .lazy-app-loading h1 {
     font-size: 40px;
+  }
+
+  .lazy-app-loading section {
+    padding: 22px;
+    border-radius: 24px;
   }
 }
